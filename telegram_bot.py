@@ -2481,9 +2481,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
         try:
             self.websocket_server = await websockets.serve(
                 self.handle_websocket_connection,
-                "0.0.0.0", 8080
+                "0.0.0.0", 8081
             )
-            logger.info("🚀 WebSocket server started on port 8080")
+            logger.info("🚀 WebSocket server started on port 8081")
         except Exception as e:
             logger.error(f"❌ Failed to start WebSocket server: {e}")
     
