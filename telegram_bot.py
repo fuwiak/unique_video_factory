@@ -2651,7 +2651,7 @@ def main():
     # Timeout settings są już wbudowane w python-telegram-bot
     
     # Start WebSocket server for upload progress using post_init
-    async def start_websocket():
+    async def start_websocket(app):
         await bot.start_websocket_server()
     
     application.post_init = start_websocket
