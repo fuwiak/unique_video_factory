@@ -47,7 +47,8 @@ MAX_VIDEO_SIZE_MB = int(os.getenv('MAX_VIDEO_SIZE_MB', '300'))
 # Self-hosted Bot API configuration
 # Auto-enable self-hosted API for Railway deployment
 USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'true').lower() == 'true'  # Default to true for Railway
-SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'http://localhost:8081')
+SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'http://localhost:8081').rstrip('/')
+SELF_HOSTED_BOT_API_URL = f"{SELF_HOSTED_API_URL}/bot"
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '2000'))  # 2GB for self-hosted
 
 # Auto-detect self-hosted API availability
@@ -160,13 +161,13 @@ if USE_SELF_HOSTED_API:
     # Force use self-hosted API for Railway deployment
     if USE_SELF_HOSTED_API:
         logger.info("🚀 FORCING self-hosted Bot API usage (Railway deployment)")
-        ACTUAL_API_URL = SELF_HOSTED_API_URL
+        ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
         ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
         logger.info(f"   Using API URL: {ACTUAL_API_URL}")
         logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
     elif api_available:
         logger.info("🚀 Self-hosted Bot API detected and available")
-        ACTUAL_API_URL = SELF_HOSTED_API_URL
+        ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
         ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
     else:
         logger.warning("⚠️ Self-hosted API enabled but not available, falling back to standard API")
