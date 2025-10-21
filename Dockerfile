@@ -1,27 +1,33 @@
-# Dockerfile for Railway deployment
+# Dockerfile for Railway deployment - Optimized for layer caching
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (cached layer)
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Copy requirements first for better caching
+# Copy requirements first for better caching (most stable layer)
 COPY requirements.txt .
 
-# Install Python dependencies
+# Install Python dependencies (cached if requirements.txt unchanged)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy only essential files first (for better caching)
+COPY telegram_bot.py .
+COPY railway.json .
+COPY Procfile .
 
 # Create necessary directories
 RUN mkdir -p temp_videos telegram_results generated_videos
+
+# Copy remaining files (changes most frequently)
+COPY . .
 
 # Set environment variables
 ENV PYTHONPATH=/app
