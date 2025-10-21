@@ -56,10 +56,26 @@ def check_self_hosted_api():
     """Check if self-hosted Bot API is available"""
     try:
         import requests
-        logger.info(f"🔍 Checking self-hosted API at: {SELF_HOSTED_API_URL}/health")
-        response = requests.get(f"{SELF_HOSTED_API_URL}/health", timeout=5)
-        logger.info(f"   Response status: {response.status_code}")
-        return response.status_code == 200
+        
+        # Try multiple endpoints
+        endpoints = [
+            f"{SELF_HOSTED_API_URL}/health",
+            f"{SELF_HOSTED_API_URL}/",
+            f"{SELF_HOSTED_API_URL}/bot"
+        ]
+        
+        for endpoint in endpoints:
+            try:
+                logger.info(f"🔍 Checking self-hosted API at: {endpoint}")
+                response = requests.get(endpoint, timeout=5)
+                logger.info(f"   Response status: {response.status_code}")
+                if response.status_code in [200, 404]:  # 404 is OK for some endpoints
+                    return True
+            except Exception as e:
+                logger.debug(f"   Endpoint {endpoint} failed: {e}")
+                continue
+        
+        return False
     except Exception as e:
         logger.warning(f"⚠️ Self-hosted API check failed: {e}")
         return False
@@ -100,11 +116,26 @@ def start_self_hosted_api_server():
                 logger.warning("⚠️ telegram-bot-api binary not found, skipping self-hosted API")
                 return False
         
-        # Double check the binary still exists
+        # Double check the binary still exists and is executable
         if not (telegram_bot_api_path and os.path.exists(telegram_bot_api_path)):
             logger.error(f"❌ telegram-bot-api binary not found at {telegram_bot_api_path}")
             logger.info("   Install it or run docker-compose up telegram-bot-api before starting the bot.")
             return False
+        
+        # Test if binary can run (check version)
+        try:
+            test_result = subprocess.run(
+                [telegram_bot_api_path, "--help"],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if test_result.returncode != 0:
+                logger.warning(f"⚠️ telegram-bot-api binary may not work properly")
+                logger.warning(f"   Return code: {test_result.returncode}")
+                logger.warning(f"   Stderr: {test_result.stderr}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not test telegram-bot-api binary: {e}")
 
         # Start Bot API server in background
         def run_server():
@@ -115,7 +146,7 @@ def start_self_hosted_api_server():
                     "--api-hash", api_hash,
                     "--local",
                     "--http-port", "8081",
-                    "--verbosity=1"
+                    "--log-level", "1"
                 ]
                 
                 logger.info("🚀 Starting self-hosted Bot API server...")
@@ -123,8 +154,28 @@ def start_self_hosted_api_server():
                 logger.info(f"   API ID: {api_id}")
                 logger.info(f"   Args: {' '.join(server_args)}")
                 
-                result = subprocess.run(server_args, check=True, capture_output=True, text=True)
-                logger.info(f"✅ Server started successfully: {result.stdout}")
+                # Start server in background with timeout
+                process = subprocess.Popen(
+                    server_args,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True
+                )
+                
+                # Wait a bit for server to start
+                import time
+                time.sleep(2)
+                
+                # Check if process is still running
+                if process.poll() is None:
+                    logger.info("✅ Self-hosted Bot API server started successfully")
+                    return True
+                else:
+                    stdout, stderr = process.communicate()
+                    logger.error(f"❌ Server failed to start")
+                    logger.error(f"   Stdout: {stdout}")
+                    logger.error(f"   Stderr: {stderr}")
+                    return False
             except subprocess.CalledProcessError as e:
                 logger.error(f"❌ Failed to start self-hosted API server: {e}")
                 logger.error(f"   Stdout: {e.stdout}")
@@ -171,18 +222,20 @@ if USE_SELF_HOSTED_API:
         api_available = start_self_hosted_api_server()
         logger.info(f"   Server started: {api_available}")
     
-    # Require self-hosted API to be available
-    if not api_available:
-        logger.error("❌ Self-hosted Bot API is required but not available. Aborting startup.")
-        logger.error(f"   Expected to reach: {SELF_HOSTED_API_URL}")
-        logger.error("   Install the telegram-bot-api binary or start the docker service before running the bot.")
-        raise RuntimeError("Self-hosted Bot API not reachable")
-
-    logger.info("🚀 Using self-hosted Bot API (Railway deployment)")
-    ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
-    ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
-    logger.info(f"   Using API URL: {ACTUAL_API_URL}")
-    logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
+    # Try to use self-hosted API, fallback to standard if not available
+    if api_available:
+        logger.info("🚀 Using self-hosted Bot API (Railway deployment)")
+        ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
+        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+        logger.info(f"   Using API URL: {ACTUAL_API_URL}")
+        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
+    else:
+        logger.warning("⚠️ Self-hosted Bot API not available, falling back to standard API")
+        logger.warning(f"   Expected to reach: {SELF_HOSTED_API_URL}")
+        logger.warning("   Install the telegram-bot-api binary or start the docker service before running the bot.")
+        logger.info("📱 Using standard Telegram API (20MB limit)")
+        ACTUAL_API_URL = "https://api.telegram.org"
+        ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
 else:
     logger.info("📱 Using standard Telegram API (20MB limit)")
     ACTUAL_API_URL = "https://api.telegram.org"
