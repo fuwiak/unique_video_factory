@@ -115,15 +115,8 @@ def start_self_hosted_api_server():
                 logger.info(f"   API ID: {api_id}")
                 logger.info(f"   Args: {' '.join(server_args)}")
                 
-                result = subprocess.run(server_args, capture_output=True, text=True, timeout=10)
-                if result.returncode == 0:
-                    logger.info(f"✅ Server started successfully: {result.stdout}")
-                else:
-                    logger.error(f"❌ Server failed to start: {result.stderr}")
-                    logger.error(f"   Return code: {result.returncode}")
-                    logger.error(f"   Args: {' '.join(server_args)}")
-            except subprocess.TimeoutExpired:
-                logger.error("❌ Server startup timed out")
+                result = subprocess.run(server_args, check=True, capture_output=True, text=True)
+                logger.info(f"✅ Server started successfully: {result.stdout}")
             except Exception as e:
                 logger.error(f"❌ Failed to start self-hosted API server: {e}")
                 logger.error(f"   Error details: {str(e)}")
@@ -164,22 +157,19 @@ if USE_SELF_HOSTED_API:
         api_available = start_self_hosted_api_server()
         logger.info(f"   Server started: {api_available}")
     
-    # Check if self-hosted API is actually working
-    if USE_SELF_HOSTED_API and api_available:
-        logger.info("🚀 Self-hosted Bot API detected and available")
+    # Force use self-hosted API for Railway deployment
+    if USE_SELF_HOSTED_API:
+        logger.info("🚀 FORCING self-hosted Bot API usage (Railway deployment)")
         ACTUAL_API_URL = SELF_HOSTED_API_URL
         ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
         logger.info(f"   Using API URL: {ACTUAL_API_URL}")
         logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
-    elif USE_SELF_HOSTED_API and not api_available:
-        logger.warning("⚠️ Self-hosted API enabled but not available, falling back to standard API")
-        logger.warning("   Self-hosted API server failed to start or is not responding")
-        ACTUAL_API_URL = "https://api.telegram.org"
-        ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
-        logger.info(f"   Using fallback API URL: {ACTUAL_API_URL}")
-        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
+    elif api_available:
+        logger.info("🚀 Self-hosted Bot API detected and available")
+        ACTUAL_API_URL = SELF_HOSTED_API_URL
+        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
     else:
-        logger.info("📱 Using standard Telegram API (20MB limit)")
+        logger.warning("⚠️ Self-hosted API enabled but not available, falling back to standard API")
         ACTUAL_API_URL = "https://api.telegram.org"
         ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
 else:
@@ -2946,16 +2936,15 @@ def main():
     
     application.post_init = start_websocket
     
-    # Start self-hosted Bot API server if enabled and not already running
-    if USE_SELF_HOSTED_API and ACTUAL_API_URL == SELF_HOSTED_API_URL:
-        logger.info("🚀 Self-hosted Bot API is configured and will be used")
-        logger.info(f"   API URL: {ACTUAL_API_URL}")
-        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
-    elif USE_SELF_HOSTED_API and ACTUAL_API_URL != SELF_HOSTED_API_URL:
-        logger.warning("⚠️ Self-hosted API enabled but falling back to standard API")
-        logger.warning("   Self-hosted API server is not available or not responding")
-        logger.info(f"   Using standard API: {ACTUAL_API_URL}")
-        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
+    # Check if self-hosted Bot API is available (running in separate container)
+    if USE_SELF_HOSTED_API:
+        logger.info("🔍 Checking if self-hosted Bot API is available...")
+        if check_self_hosted_api():
+            logger.info("✅ Self-hosted Bot API is available and running")
+        else:
+            logger.warning("⚠️ Self-hosted Bot API is not available")
+            logger.info("   Make sure telegram-bot-api container is running")
+            logger.info("   Run: docker-compose up telegram-bot-api")
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))

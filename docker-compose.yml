@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  telegram-bot-api:
+    build:
+      context: .
+      dockerfile: telegram-bot-api.Dockerfile
+    container_name: telegram-bot-api
+    ports:
+      - "8081:8081"
+    environment:
+      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
+      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
+    command: >
+      telegram-bot-api
+      --api-id=${TELEGRAM_API_ID}
+      --api-hash=${TELEGRAM_API_HASH}
+      --local
+      --http-port=8081
+      --log-level=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  bot:
+    build: .
+    container_name: unique-video-factory-bot
+    ports:
+      - "8000:8000"
+      - "8081:8081"
+    environment:
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - YANDEX_DISK_TOKEN=${YANDEX_DISK_TOKEN}
+      - YANDEX_DISK_FOLDER=${YANDEX_DISK_FOLDER}
+      - USE_SELF_HOSTED_API=true
+      - SELF_HOSTED_API_URL=http://telegram-bot-api:8081
+      - MAX_FILE_SIZE_MB=2000
+    depends_on:
+      telegram-bot-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
