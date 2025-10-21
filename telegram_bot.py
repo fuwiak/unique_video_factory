@@ -1707,10 +1707,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Проверяем размер выходного файла
             output_size = os.path.getsize(result_path)
+            
+            # Дополнительная walidacja pliku
             if output_size == 0:
                 logger.error(f"❌ Output file is empty: {result_path}")
                 return None
             
+            logger.info(f"📊 Output file size: {output_size} bytes ({output_size/1024/1024:.1f} MB)")
             logger.info(f"✅ Video {task['index']} processed successfully: {result_path} ({output_size / (1024*1024):.1f}MB)")
             
             return {

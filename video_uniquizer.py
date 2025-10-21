@@ -9,6 +9,15 @@ import os
 from typing import Tuple, List, Optional
 import json
 from tqdm import tqdm
+import logging
+
+# VidGear fallback
+try:
+    from vidgear.gears import WriteGear
+    VIDGEAR_AVAILABLE = True
+except ImportError:
+    VIDGEAR_AVAILABLE = False
+    print("⚠️ VidGear not available, using MoviePy only")
 
 
 class VideoUniquizer:
@@ -226,6 +235,21 @@ class VideoUniquizer:
         """
         Применяет естественные эффекты в стиле социальных сетей (с сохранением аудио)
         """
+        try:
+            return self._apply_social_effects_moviepy(video_path, output_path)
+        except Exception as e:
+            print(f"⚠️ MoviePy failed: {e}")
+            if VIDGEAR_AVAILABLE:
+                print("🔄 Trying VidGear fallback...")
+                return self._apply_social_effects_vidgear(video_path, output_path)
+            else:
+                print("❌ No fallback available, re-raising error")
+                raise e
+    
+    def _apply_social_effects_moviepy(self, video_path: str, output_path: str) -> str:
+        """
+        MoviePy implementation of social effects
+        """
         # Загружаем видео с аудио
         clip = VideoFileClip(video_path)
         
@@ -265,6 +289,75 @@ class VideoUniquizer:
         # Закрываем клипы
         processed_clip.close()
         clip.close()
+        
+        return output_path
+    
+    def _apply_social_effects_vidgear(self, video_path: str, output_path: str) -> str:
+        """
+        VidGear fallback implementation for social effects
+        """
+        print("🎬 Using VidGear for video processing...")
+        
+        # Открываем видео с помощью OpenCV
+        cap = cv2.VideoCapture(video_path)
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video: {video_path}")
+        
+        # Получаем параметры видео
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        print(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames")
+        
+        # Настройки VidGear
+        output_params = {
+            "-vcodec": "libx264",
+            "-preset": "fast",
+            "-crf": "23",
+            "-maxrate": "2M",
+            "-bufsize": "4M",
+            "-threads": "2",
+            "-movflags": "+faststart"
+        }
+        
+        # Случайно выбираем стиль эффекта
+        effect_style = random.choice(list(self.social_effects.keys()))
+        effect_params = self.social_effects[effect_style]
+        
+        print(f"Применяем эффект '{effect_style}': {effect_params}")
+        
+        # Инициализируем VidGear writer
+        writer = WriteGear(output_filename=output_path, logging=False, **output_params)
+        
+        frame_count = 0
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Применяем эффекты к кадру
+                processed_frame = self._apply_social_frame_effects(frame, effect_style, effect_params)
+                
+                # Записываем кадр
+                writer.write(processed_frame)
+                
+                frame_count += 1
+                if frame_count % 30 == 0:  # Progress every 30 frames
+                    print(f"📊 Processed {frame_count}/{total_frames} frames ({frame_count/total_frames*100:.1f}%)")
+        
+        finally:
+            # Закрываем все
+            cap.release()
+            writer.close()
+        
+        print(f"✅ VidGear processing completed: {frame_count} frames")
+        
+        # Проверяем что файл создан и не пустой
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise ValueError("VidGear output file is empty or doesn't exist")
         
         return output_path
     
@@ -387,7 +480,7 @@ class VideoUniquizer:
     def uniquize_video(self, input_path: str, output_path: str, 
                       effects: List[str] = None) -> str:
         """
-        Основной метод для уникализации видео
+        Основной метод для уникализации видео с VidGear fallback
         
         Args:
             input_path: Путь к входному видео
@@ -435,12 +528,86 @@ class VideoUniquizer:
             print(f"Видео успешно уникализировано: {output_path}")
             
         except Exception as e:
-            print(f"Ошибка при обработке видео: {e}")
-            # Очищаем временные файлы
-            for temp_file in [temp_path, current_path]:
-                if os.path.exists(temp_file):
-                    os.remove(temp_file)
-            raise
+            print(f"⚠️ MoviePy processing failed: {e}")
+            if VIDGEAR_AVAILABLE:
+                print("🔄 Trying VidGear fallback for full video processing...")
+                return self._uniquize_video_vidgear(input_path, output_path, effects)
+            else:
+                print("❌ No fallback available, re-raising error")
+                # Очищаем временные файлы
+                for temp_file in [temp_path, current_path]:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                raise
+        
+        return output_path
+    
+    def _uniquize_video_vidgear(self, input_path: str, output_path: str, effects: List[str]) -> str:
+        """
+        VidGear fallback implementation for full video uniquization
+        """
+        print("🎬 Using VidGear for full video uniquization...")
+        
+        # Открываем видео с помощью OpenCV
+        cap = cv2.VideoCapture(input_path)
+        if not cap.isOpened():
+            raise ValueError(f"Cannot open video: {input_path}")
+        
+        # Получаем параметры видео
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        print(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames")
+        
+        # Настройки VidGear
+        output_params = {
+            "-vcodec": "libx264",
+            "-preset": "fast",
+            "-crf": "23",
+            "-maxrate": "2M",
+            "-bufsize": "4M",
+            "-threads": "2",
+            "-movflags": "+faststart"
+        }
+        
+        # Случайно выбираем стиль эффекта
+        effect_style = random.choice(list(self.social_effects.keys()))
+        effect_params = self.social_effects[effect_style]
+        
+        print(f"Применяем эффект '{effect_style}': {effect_params}")
+        
+        # Инициализируем VidGear writer
+        writer = WriteGear(output_filename=output_path, logging=False, **output_params)
+        
+        frame_count = 0
+        try:
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                # Применяем эффекты к кадру
+                processed_frame = self._apply_social_frame_effects(frame, effect_style, effect_params)
+                
+                # Записываем кадр
+                writer.write(processed_frame)
+                
+                frame_count += 1
+                if frame_count % 30 == 0:  # Progress every 30 frames
+                    print(f"📊 Processed {frame_count}/{total_frames} frames ({frame_count/total_frames*100:.1f}%)")
+        
+        finally:
+            # Закрываем все
+            cap.release()
+            writer.close()
+        
+        print(f"✅ VidGear uniquization completed: {frame_count} frames")
+        
+        # Проверяем что файл создан и не пустой
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise ValueError("VidGear output file is empty or doesn't exist")
         
         return output_path
 
