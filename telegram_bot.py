@@ -74,11 +74,19 @@ def start_self_hosted_api_server():
             logger.warning("⚠️ TELEGRAM_API_ID or TELEGRAM_API_HASH not found, skipping self-hosted API")
             return False
         
+        # Check if telegram-bot-api binary exists
+        import shutil
+        telegram_bot_api_path = shutil.which("telegram-bot-api")
+        
+        if not telegram_bot_api_path:
+            logger.warning("⚠️ telegram-bot-api binary not found, skipping self-hosted API")
+            return False
+        
         # Start Bot API server in background
         def run_server():
             try:
                 server_args = [
-                    "telegram-bot-api",
+                    telegram_bot_api_path,
                     "--api-id", api_id,
                     "--api-hash", api_hash,
                     "--local",
