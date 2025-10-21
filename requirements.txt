@@ -10,7 +10,7 @@ tqdm==4.66.1
 vidgear==0.3.0
 python-telegram-bot==20.7
 python-dotenv==1.0.0
-yadisk==1.4.0
+yadisk
 aiofiles==23.2.1
 asyncio
 concurrent.futures
