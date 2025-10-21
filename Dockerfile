@@ -1,4 +1,26 @@
 # Dockerfile for Railway deployment
+# Multi-stage build for telegram-bot-api
+FROM ubuntu:22.04 AS telegram-bot-api-builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    libssl-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build telegram-bot-api
+RUN git clone --recursive https://github.com/tdlib/telegram-bot-api.git /tmp/telegram-bot-api \
+    && cd /tmp/telegram-bot-api \
+    && mkdir build \
+    && cd build \
+    && cmake .. \
+    && make -j$(nproc) \
+    && cp telegram-bot-api /usr/local/bin/telegram-bot-api
+
+# Main image
 FROM python:3.11-slim
 
 # Set working directory
@@ -11,26 +33,9 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install telegram-bot-api from source
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    cmake \
-    git \
-    libssl-dev \
-    zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Clone and build telegram-bot-api from source
-RUN git clone https://github.com/tdlib/telegram-bot-api.git /tmp/telegram-bot-api \
-    && cd /tmp/telegram-bot-api \
-    && mkdir build \
-    && cd build \
-    && cmake .. \
-    && make -j$(nproc) \
-    && cp telegram-bot-api /usr/local/bin/ \
-    && chmod +x /usr/local/bin/telegram-bot-api \
-    && cd / \
-    && rm -rf /tmp/telegram-bot-api
+# Copy telegram-bot-api from builder stage
+COPY --from=telegram-bot-api-builder /usr/local/bin/telegram-bot-api /usr/local/bin/telegram-bot-api
+RUN chmod +x /usr/local/bin/telegram-bot-api
 
 # Copy requirements first for better caching
 COPY requirements.txt .
