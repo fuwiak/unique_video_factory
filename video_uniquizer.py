@@ -26,18 +26,20 @@ class VideoUniquizer:
     Нейронная сеть для уникализации видео через незаметные изменения
     """
     
-    def __init__(self, device: str = 'auto'):
+    def __init__(self, device: str = 'auto', progress_callback=None):
         """
         Инициализация уникализатора видео
         
         Args:
             device: Устройство для обработки ('cpu', 'cuda', 'auto')
+            progress_callback: Callback function for progress updates (message, progress_pct)
         """
         if device == 'auto':
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.device = torch.device(device)
         
+        self.progress_callback = progress_callback
         print(f"Используется устройство: {self.device}")
         
         # Параметры для заметной уникализации
@@ -232,20 +234,31 @@ class VideoUniquizer:
         
         return frame_tensor
     
+    def _update_progress(self, message: str, progress_pct: float = None):
+        """
+        Update progress via callback if available
+        """
+        if self.progress_callback:
+            self.progress_callback(message, progress_pct)
+        print(f"📊 {message}")
+        logging.info(f"📊 {message}")
+    
     def apply_social_effects(self, video_path: str, output_path: str) -> str:
         """
         Применяет естественные эффекты в стиле социальных сетей (с сохранением аудио)
+        VidGear first (faster), MoviePy as fallback
         """
-        try:
-            return self._apply_social_effects_moviepy(video_path, output_path)
-        except Exception as e:
-            print(f"⚠️ MoviePy failed: {e}")
-            if VIDGEAR_AVAILABLE:
-                print("🔄 Trying VidGear fallback...")
+        if VIDGEAR_AVAILABLE:
+            try:
+                print("🚀 Using VidGear (faster) for video processing...")
                 return self._apply_social_effects_vidgear(video_path, output_path)
-            else:
-                print("❌ No fallback available, re-raising error")
-                raise e
+            except Exception as e:
+                print(f"⚠️ VidGear failed: {e}")
+                print("🔄 Trying MoviePy fallback...")
+                return self._apply_social_effects_moviepy(video_path, output_path)
+        else:
+            print("⚠️ VidGear not available, using MoviePy...")
+            return self._apply_social_effects_moviepy(video_path, output_path)
     
     def _apply_social_effects_moviepy(self, video_path: str, output_path: str) -> str:
         """
@@ -322,10 +335,9 @@ class VideoUniquizer:
     
     def _apply_social_effects_vidgear(self, video_path: str, output_path: str) -> str:
         """
-        VidGear fallback implementation for social effects
+        VidGear implementation for social effects (faster than MoviePy)
         """
-        print("🎬 Using VidGear for video processing...")
-        logging.info("🎬 Starting VidGear video processing...")
+        self._update_progress("🚀 Starting VidGear video processing (faster method)...")
         
         # Открываем видео с помощью OpenCV
         cap = cv2.VideoCapture(video_path)
@@ -339,8 +351,7 @@ class VideoUniquizer:
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         duration = total_frames / fps if fps > 0 else 0
         
-        print(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
-        logging.info(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
+        self._update_progress(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
         
         # Настройки VidGear
         output_params = {
@@ -357,8 +368,7 @@ class VideoUniquizer:
         effect_style = random.choice(list(self.social_effects.keys()))
         effect_params = self.social_effects[effect_style]
         
-        print(f"🎨 Applying effect '{effect_style}': {effect_params}")
-        logging.info(f"🎨 Applying effect '{effect_style}': {effect_params}")
+        self._update_progress(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
         # Инициализируем VidGear writer
         writer = WriteGear(output_filename=output_path, logging=False, **output_params)
@@ -387,10 +397,11 @@ class VideoUniquizer:
                     fps_actual = frame_count / elapsed_time if elapsed_time > 0 else 0
                     eta_seconds = (total_frames - frame_count) / fps_actual if fps_actual > 0 else 0
                     
-                    print(f"📊 Progress: {frame_count}/{total_frames} frames ({progress_pct:.1f}%) | "
-                          f"Speed: {fps_actual:.1f} fps | ETA: {eta_seconds:.1f}s")
-                    logging.info(f"📊 VidGear Progress: {frame_count}/{total_frames} frames ({progress_pct:.1f}%) | "
-                               f"Speed: {fps_actual:.1f} fps | ETA: {eta_seconds:.1f}s")
+                    self._update_progress(
+                        f"🎬 VidGear Progress: {frame_count}/{total_frames} frames ({progress_pct:.1f}%) | "
+                        f"Speed: {fps_actual:.1f} fps | ETA: {eta_seconds:.1f}s",
+                        progress_pct
+                    )
         
         finally:
             # Закрываем все
@@ -400,8 +411,7 @@ class VideoUniquizer:
         total_time = time.time() - start_time
         avg_fps = frame_count / total_time if total_time > 0 else 0
         
-        print(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
-        logging.info(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
+        self._update_progress(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
         
         # Проверяем что файл создан и не пустой
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
@@ -541,10 +551,8 @@ class VideoUniquizer:
         if effects is None:
             effects = ['temporal', 'social']  # Используем социальные эффекты вместо нейросетевых
         
-        print(f"🎬 Уникализация видео: {input_path}")
-        print(f"🎨 Применяемые эффекты: {effects}")
-        logging.info(f"🎬 Starting video uniquization: {input_path}")
-        logging.info(f"🎨 Effects to apply: {effects}")
+        self._update_progress(f"🎬 Starting video uniquization: {input_path}")
+        self._update_progress(f"🎨 Effects to apply: {effects}")
         
         # Получаем информацию о входном видео
         try:
@@ -554,11 +562,9 @@ class VideoUniquizer:
             input_frames = int(input_duration * input_fps) if input_fps else 0
             input_clip.close()
             
-            print(f"📹 Input video: {input_duration:.1f}s @ {input_fps}fps ({input_frames} frames)")
-            logging.info(f"📹 Input video: {input_duration:.1f}s @ {input_fps}fps ({input_frames} frames)")
+            self._update_progress(f"📹 Input video: {input_duration:.1f}s @ {input_fps}fps ({input_frames} frames)")
         except Exception as e:
-            print(f"⚠️ Could not get input video info: {e}")
-            logging.warning(f"⚠️ Could not get input video info: {e}")
+            self._update_progress(f"⚠️ Could not get input video info: {e}")
         
         temp_path = f"temp_{random.randint(1000, 9999)}.mp4"
         current_path = input_path
@@ -568,25 +574,24 @@ class VideoUniquizer:
             # Применяем эффекты последовательно
             for i, effect in enumerate(effects):
                 effect_start = time.time()
-                print(f"🔄 Step {i+1}/{len(effects)}: Applying {effect} effects...")
-                logging.info(f"🔄 Step {i+1}/{len(effects)}: Applying {effect} effects...")
+                progress_pct = (i / len(effects)) * 100
+                self._update_progress(f"🔄 Step {i+1}/{len(effects)}: Applying {effect} effects...", progress_pct)
                 
                 if effect == 'temporal':
-                    print("⏱️ Применяем временные эффекты...")
+                    self._update_progress("⏱️ Applying temporal effects...")
                     self.apply_temporal_effects(current_path, temp_path)
                 elif effect == 'visual':
-                    print("👁️ Применяем визуальные эффекты...")
+                    self._update_progress("👁️ Applying visual effects...")
                     self.apply_visual_effects(current_path, temp_path)
                 elif effect == 'neural':
-                    print("🧠 Применяем нейросетевые эффекты...")
+                    self._update_progress("🧠 Applying neural effects...")
                     self.apply_neural_effects(current_path, temp_path)
                 elif effect == 'social':
-                    print("📱 Применяем эффекты социальных сетей...")
+                    self._update_progress("📱 Applying social effects...")
                     self.apply_social_effects(current_path, temp_path)
                 
                 effect_time = time.time() - effect_start
-                print(f"✅ {effect} effects completed in {effect_time:.1f}s")
-                logging.info(f"✅ {effect} effects completed in {effect_time:.1f}s")
+                self._update_progress(f"✅ {effect} effects completed in {effect_time:.1f}s")
                 
                 # Обновляем путь для следующего эффекта
                 if i > 0:  # Удаляем предыдущий временный файл
@@ -600,10 +605,8 @@ class VideoUniquizer:
             os.rename(current_path, output_path)
             total_time = time.time() - start_time
             
-            print(f"🎉 Видео успешно уникализировано: {output_path}")
-            print(f"⏱️ Total processing time: {total_time:.1f}s")
-            logging.info(f"🎉 Video successfully uniquized: {output_path}")
-            logging.info(f"⏱️ Total processing time: {total_time:.1f}s")
+            self._update_progress(f"🎉 Video successfully uniquized: {output_path}")
+            self._update_progress(f"⏱️ Total processing time: {total_time:.1f}s", 100.0)
             
         except Exception as e:
             print(f"⚠️ MoviePy processing failed: {e}")

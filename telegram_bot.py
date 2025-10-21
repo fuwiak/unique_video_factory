@@ -1678,7 +1678,14 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     trimmed_input_path = self.trim_video_if_needed_sync(task['input_path'], max_duration_seconds=60)
                     compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                     
-                    uniquizer = VideoUniquizer()
+                    # Progress callback for user updates
+                    def progress_callback(message, progress_pct=None):
+                        if progress_pct is not None:
+                            print(f"📊 [{progress_pct:.1f}%] {message}")
+                        else:
+                            print(f"📊 {message}")
+                    
+                    uniquizer = VideoUniquizer(progress_callback=progress_callback)
                     result_path = uniquizer.uniquize_video(
                         input_path=compressed_input_path,
                         output_path=task['output_path'],
@@ -1689,7 +1696,14 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 trimmed_input_path = self.trim_video_if_needed_sync(task['input_path'], max_duration_seconds=60)
                 compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                 
-                uniquizer = VideoUniquizer()
+                # Progress callback for user updates
+                def progress_callback(message, progress_pct=None):
+                    if progress_pct is not None:
+                        print(f"📊 [{progress_pct:.1f}%] {message}")
+                    else:
+                        print(f"📊 {message}")
+                
+                uniquizer = VideoUniquizer(progress_callback=progress_callback)
                 result_path = uniquizer.uniquize_video(
                     input_path=compressed_input_path,
                     output_path=task['output_path'],
