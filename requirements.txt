@@ -1,3 +1,4 @@
+# Core dependencies
 opencv-python==4.8.1.78
 torch==2.1.0
 torchvision==0.16.0
@@ -8,24 +9,28 @@ scikit-image==0.21.0
 matplotlib==3.7.2
 tqdm==4.66.1
 vidgear==0.3.0
+
+# Telegram Bot
 python-telegram-bot==20.7
 python-dotenv==1.0.0
-yadisk
+
+# Yandex Disk
+yadisk==1.4.0
+
+# Async support
 aiofiles==23.2.1
-asyncio
-concurrent.futures
-pathlib
-datetime
-uuid
+
 # Social media stats libraries
 instaloader==4.14.2
 TikTokApi==7.2.1
 vk-api==11.9.9
 requests==2.32.5
+
+# Google Sheets
 gspread==5.12.4
 google-auth==2.23.4
 google-auth-oauthlib==1.1.0
 google-auth-httplib2==0.1.1
-# Railway deployment dependencies
+
+# Railway deployment
 gunicorn==21.2.0
-requests==2.32.5
