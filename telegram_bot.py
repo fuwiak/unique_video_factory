@@ -49,6 +49,26 @@ USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'false').lower() == 'true
 SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'https://api.telegram.org')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '2000'))  # 2GB for self-hosted
 
+# Auto-detect self-hosted API availability
+def check_self_hosted_api():
+    """Check if self-hosted Bot API is available"""
+    try:
+        import requests
+        response = requests.get(f"{SELF_HOSTED_API_URL}/health", timeout=5)
+        return response.status_code == 200
+    except:
+        return False
+
+# Check if we should use self-hosted API
+if USE_SELF_HOSTED_API and check_self_hosted_api():
+    logger.info("🚀 Self-hosted Bot API detected and available")
+    ACTUAL_API_URL = SELF_HOSTED_API_URL
+    ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+else:
+    logger.info("📱 Using standard Telegram API (20MB limit)")
+    ACTUAL_API_URL = "https://api.telegram.org"
+    ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
+
 # Состояния пользователей
 user_states = {}
 
@@ -872,16 +892,14 @@ ID сценария: {video_data['metadata']['scenario_id']}
         # Проверяем размер файла с fallbackami
         # Telegram API ma różne limity dla różnych typów plików
         # Dla video limit może być niższy niż 50MB
-        if USE_SELF_HOSTED_API:
-            # Self-hosted Bot API поддерживает файлы до 2GB
-            telegram_video_limit = MAX_FILE_SIZE_MB  # 2GB
-            telegram_document_limit = MAX_FILE_SIZE_MB  # 2GB
-            logger.info(f"🚀 Self-hosted Bot API enabled - max file size: {MAX_FILE_SIZE_MB}MB")
+        # Use actual detected limits
+        telegram_video_limit = ACTUAL_MAX_FILE_SIZE
+        telegram_document_limit = ACTUAL_MAX_FILE_SIZE
+        
+        if ACTUAL_MAX_FILE_SIZE > 20:
+            logger.info(f"🚀 Self-hosted Bot API enabled - max file size: {ACTUAL_MAX_FILE_SIZE}MB")
         else:
-            # Railway deployment - używamy 2GB limit
-            telegram_video_limit = 2000  # MB - Railway limit 2GB
-            logger.info("📱 Using Railway deployment - 2GB file size limit")
-        telegram_document_limit = 2000  # MB - Railway limit dla dokumentów
+            logger.info(f"📱 Standard Telegram API - max file size: {ACTUAL_MAX_FILE_SIZE}MB")
         
         if file_size_mb > telegram_video_limit and (video or file_name.lower().endswith(('.mp4', '.mov', '.avi'))):
             # Dla video plików limit jest niższy - próbujemy z kompresją lub podziałem
@@ -2666,7 +2684,14 @@ def main():
     bot = TelegramVideoBot()
     
     # Создаем приложение с оптимизацией для Railway
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    if ACTUAL_API_URL != "https://api.telegram.org":
+        # Use self-hosted Bot API
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).base_url(ACTUAL_API_URL).build()
+        logger.info(f"🚀 Using self-hosted Bot API: {ACTUAL_API_URL}")
+    else:
+        # Use standard Telegram API
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        logger.info("📱 Using standard Telegram API")
     
     # Оптимизация для Railway deployment - ustawiamy timeout w Application.builder
     # Timeout settings są już wbudowane w python-telegram-bot
