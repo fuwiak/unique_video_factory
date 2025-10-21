@@ -9,6 +9,20 @@ RUN apt-get update && apt-get install -y \
     git \
     libssl-dev \
     zlib1g-dev \
+    gperf \
+    libreadline-dev \
+    libsqlite3-dev \
+    libcurl4-openssl-dev \
+    libffi-dev \
+    libjpeg-dev \
+    libpng-dev \
+    libwebp-dev \
+    libtiff-dev \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    libswresample-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Build telegram-bot-api
