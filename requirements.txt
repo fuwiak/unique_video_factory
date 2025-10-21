@@ -2,20 +2,20 @@
 opencv-python==4.8.1.78
 torch==2.1.0
 torchvision==0.16.0
-numpy==1.24.3
-Pillow==10.0.1
-moviepy==1.0.3
-scikit-image==0.21.0
-matplotlib==3.7.2
-tqdm==4.66.1
-vidgear==0.3.0
+numpy>=1.24.0,<2.0.0
+Pillow>=10.0.0
+moviepy>=1.0.0
+scikit-image>=0.21.0
+matplotlib>=3.7.0
+tqdm>=4.66.0
+vidgear>=0.3.0
 
 # Telegram Bot
 python-telegram-bot==20.7
 python-dotenv==1.0.0
 
 # Yandex Disk
-yadisk==1.4.0
+yadisk==3.4.0
 
 # Async support
 aiofiles==23.2.1
