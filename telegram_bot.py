@@ -2650,8 +2650,11 @@ def main():
     # Оптимизация для Railway deployment - ustawiamy timeout w Application.builder
     # Timeout settings są już wbudowane w python-telegram-bot
     
-    # Start WebSocket server for upload progress
-    asyncio.create_task(bot.start_websocket_server())
+    # Start WebSocket server for upload progress using post_init
+    async def start_websocket():
+        await bot.start_websocket_server()
+    
+    application.post_init = start_websocket
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))
