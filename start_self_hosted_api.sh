@@ -32,7 +32,7 @@ echo "✅ Found telegram-bot-api at: $TELEGRAM_BOT_API_PATH"
 # Start the server
 echo "🚀 Starting server with API ID: $TELEGRAM_API_ID"
 echo "   Port: 8081"
-echo "   Log level: 1"
+echo "   Verbosity: 1"
 
 # Kill any existing server on port 8081
 lsof -ti:8081 | xargs kill -9 2>/dev/null || true
@@ -43,7 +43,7 @@ nohup "$TELEGRAM_BOT_API_PATH" \
     --api-hash "$TELEGRAM_API_HASH" \
     --local \
     --http-port 8081 \
-    --log-level 1 \
+    --verbosity 1 \
     > /tmp/telegram-bot-api.log 2>&1 &
 
 SERVER_PID=$!

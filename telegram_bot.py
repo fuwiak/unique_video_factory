@@ -146,7 +146,7 @@ def start_self_hosted_api_server():
                     "--api-hash", api_hash,
                     "--local",
                     "--http-port", "8081",
-                    "--log-level", "1"
+                    "--verbosity", "1"
                 ]
                 
                 logger.info("🚀 Starting self-hosted Bot API server...")

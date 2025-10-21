@@ -92,7 +92,7 @@ if [ -n "$TELEGRAM_API_ID" ] && [ -n "$TELEGRAM_API_HASH" ]; then\n\
         --api-hash "$TELEGRAM_API_HASH" \\\n\
         --local \\\n\
         --http-port 8081 \\\n\
-        --log-level 1 &\n\
+        --verbosity 1 &\n\
     \n\
     # Wait for API to start\n\
     echo "⏳ Waiting for self-hosted API to start..."\n\
