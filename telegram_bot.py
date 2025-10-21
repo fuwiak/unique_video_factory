@@ -2641,10 +2641,61 @@ ID сценария: {video_data['metadata']['scenario_id']}
         except Exception as e:
             logger.error(f"❌ WebSocket error: {e}")
     
+    def compress_mov_file(self, file_path: str, output_path: str) -> str:
+        """Compress .MOV files for faster upload"""
+        try:
+            import subprocess
+            
+            # Check if file is .MOV and larger than 10MB
+            if not file_path.lower().endswith('.mov'):
+                return file_path
+            
+            file_size = os.path.getsize(file_path)
+            if file_size < 10 * 1024 * 1024:  # Less than 10MB, no compression needed
+                return file_path
+            
+            logger.info(f"🗜️ Compressing .MOV file: {file_size / (1024*1024):.1f}MB")
+            
+            # Use FFmpeg to compress .MOV files
+            cmd = [
+                'ffmpeg', '-i', file_path,
+                '-c:v', 'libx264',           # H.264 codec
+                '-crf', '28',                # Constant rate factor (lower = better quality)
+                '-preset', 'fast',           # Fast encoding
+                '-c:a', 'aac',               # AAC audio codec
+                '-b:a', '128k',              # Audio bitrate
+                '-movflags', '+faststart',   # Optimize for streaming
+                '-y',                        # Overwrite output file
+                output_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            
+            if result.returncode == 0 and os.path.exists(output_path):
+                compressed_size = os.path.getsize(output_path)
+                compression_ratio = (1 - compressed_size / file_size) * 100
+                logger.info(f"✅ Compression successful: {compression_ratio:.1f}% size reduction")
+                return output_path
+            else:
+                logger.warning(f"⚠️ Compression failed, using original file: {result.stderr}")
+                return file_path
+                
+        except Exception as e:
+            logger.error(f"❌ Compression error: {e}")
+            return file_path
+
     async def upload_video_with_progress(self, file_path: str, user_id: int, context, 
                                       filename: str, caption: str = "") -> dict:
-        """Upload video with WebSocket progress tracking"""
+        """Upload video with WebSocket progress tracking and .MOV compression"""
         try:
+            # Compress .MOV files for faster upload
+            if file_path.lower().endswith('.mov'):
+                compressed_path = f"{file_path}_compressed.mp4"
+                file_path = self.compress_mov_file(file_path, compressed_path)
+                if file_path != compressed_path and os.path.exists(compressed_path):
+                    # Use compressed file
+                    file_path = compressed_path
+            
             file_size = os.path.getsize(file_path)
             
             # Create progress tracker
@@ -2664,26 +2715,34 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 return await self.chunked_upload(file_path, user_id, context, 
                                               filename, caption, progress)
             
-            # For smaller files, use regular upload with progress
+            # For smaller files, use optimized direct upload
             with open(file_path, 'rb') as f:
-                # Simulate progress for regular upload
-                for chunk in iter(lambda: f.read(chunk_size), b''):
-                    uploaded_bytes += len(chunk)
-                    progress.update_progress(uploaded_bytes, file_size)
-                    await asyncio.sleep(0.1)  # Small delay for progress updates
-                
-                # Reset file pointer
-                f.seek(0)
-                
-                # Upload to Telegram
+                # Upload to Telegram with optimized settings
                 message = await context.bot.send_document(
                     chat_id=user_id,
                     document=f,
                     filename=filename,
-                    caption=caption
+                    caption=caption,
+                    # Optimize for speed
+                    read_timeout=300,  # 5 minutes timeout
+                    write_timeout=300,  # 5 minutes timeout
+                    connect_timeout=60,  # 1 minute connection timeout
+                    pool_timeout=60  # 1 minute pool timeout
                 )
+                
+                # Update progress to 100% after successful upload
+                progress.update_progress(file_size, file_size)
             
             progress.set_status("completed")
+            
+            # Clean up compressed file if it was created
+            if file_path.endswith('_compressed.mp4') and os.path.exists(file_path):
+                try:
+                    os.unlink(file_path)
+                    logger.info(f"🗑️ Cleaned up compressed file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to clean up compressed file: {e}")
+            
             return {
                 'file_id': message.document.file_id,
                 'file_size': message.document.file_size,
@@ -2698,13 +2757,22 @@ ID сценария: {video_data['metadata']['scenario_id']}
     
     async def chunked_upload(self, file_path: str, user_id: int, context, 
                            filename: str, caption: str, progress: WebSocketUploadProgress) -> dict:
-        """Chunked upload for large files"""
+        """Optimized parallel chunked upload for large files"""
         try:
             file_size = os.path.getsize(file_path)
-            chunk_size = 5 * 1024 * 1024  # 5MB chunks
-            uploaded_chunks = 0
-            total_chunks = (file_size + chunk_size - 1) // chunk_size
             
+            # Optimize chunk size based on file size
+            if file_size > 500 * 1024 * 1024:  # > 500MB
+                chunk_size = 10 * 1024 * 1024  # 10MB chunks
+                max_concurrent = 3  # 3 parallel uploads
+            elif file_size > 100 * 1024 * 1024:  # > 100MB
+                chunk_size = 8 * 1024 * 1024  # 8MB chunks
+                max_concurrent = 4  # 4 parallel uploads
+            else:
+                chunk_size = 5 * 1024 * 1024  # 5MB chunks
+                max_concurrent = 5  # 5 parallel uploads
+            
+            total_chunks = (file_size + chunk_size - 1) // chunk_size
             progress.set_status("chunked_upload")
             
             # Create temporary chunks
@@ -2720,44 +2788,65 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     with open(chunk_path, 'wb') as chunk_file:
                         chunk_file.write(chunk_data)
                     temp_chunks.append(chunk_path)
-                    
                     chunk_num += 1
-                    uploaded_chunks += 1
-                    progress.update_progress(
-                        uploaded_chunks * chunk_size, 
-                        file_size
-                    )
             
-            # Upload first chunk as main document
-            with open(temp_chunks[0], 'rb') as f:
-                message = await context.bot.send_document(
-                    chat_id=user_id,
-                    document=f,
-                    filename=f"{filename}_part1",
-                    caption=f"{caption}\n📦 Часть 1/{len(temp_chunks)}"
-                )
+            # Upload chunks in parallel with semaphore for concurrency control
+            semaphore = asyncio.Semaphore(max_concurrent)
+            upload_tasks = []
             
-            # Upload remaining chunks as separate documents
-            for i, chunk_path in enumerate(temp_chunks[1:], 2):
-                with open(chunk_path, 'rb') as f:
-                    await context.bot.send_document(
-                        chat_id=user_id,
-                        document=f,
-                        filename=f"{filename}_part{i}",
-                        caption=f"📦 Часть {i}/{len(temp_chunks)}"
-                    )
-                
-                # Clean up chunk
-                os.unlink(chunk_path)
+            async def upload_chunk(chunk_path: str, chunk_index: int):
+                async with semaphore:
+                    try:
+                        with open(chunk_path, 'rb') as f:
+                            message = await context.bot.send_document(
+                                chat_id=user_id,
+                                document=f,
+                                filename=f"{filename}_part{chunk_index + 1}",
+                                caption=f"📦 Часть {chunk_index + 1}/{len(temp_chunks)}",
+                                # Optimize for speed
+                                read_timeout=300,
+                                write_timeout=300,
+                                connect_timeout=60,
+                                pool_timeout=60
+                            )
+                        
+                        # Clean up chunk after upload
+                        os.unlink(chunk_path)
+                        
+                        # Update progress
+                        progress.update_progress(
+                            (chunk_index + 1) * chunk_size, 
+                            file_size
+                        )
+                        
+                        return message
+                    except Exception as e:
+                        logger.error(f"❌ Chunk {chunk_index + 1} upload error: {e}")
+                        # Clean up failed chunk
+                        if os.path.exists(chunk_path):
+                            os.unlink(chunk_path)
+                        raise
             
-            # Clean up first chunk
-            os.unlink(temp_chunks[0])
+            # Create upload tasks for all chunks
+            for i, chunk_path in enumerate(temp_chunks):
+                task = asyncio.create_task(upload_chunk(chunk_path, i))
+                upload_tasks.append(task)
             
+            # Wait for all uploads to complete
+            messages = await asyncio.gather(*upload_tasks, return_exceptions=True)
+            
+            # Check for any failed uploads
+            failed_uploads = [i for i, result in enumerate(messages) if isinstance(result, Exception)]
+            if failed_uploads:
+                raise Exception(f"Failed to upload chunks: {failed_uploads}")
+            
+            # Return info about the first chunk (main document)
+            first_message = messages[0]
             progress.set_status("completed")
             return {
-                'file_id': message.document.file_id,
-                'file_size': message.document.file_size,
-                'filename': message.document.file_name,
+                'file_id': first_message.document.file_id,
+                'file_size': first_message.document.file_size,
+                'filename': first_message.document.file_name,
                 'chunks': len(temp_chunks)
             }
             
@@ -2781,12 +2870,27 @@ def main():
     
     # Создаем приложение с оптимизацией для Railway
     if ACTUAL_API_URL != "https://api.telegram.org":
-        # Use self-hosted Bot API
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).base_url(ACTUAL_API_URL).build()
+        # Use self-hosted Bot API with connection pooling
+        application = (Application.builder()
+                      .token(TELEGRAM_BOT_TOKEN)
+                      .base_url(ACTUAL_API_URL)
+                      .connection_pool_size(20)  # Increase connection pool
+                      .read_timeout(300)        # 5 minutes read timeout
+                      .write_timeout(300)       # 5 minutes write timeout
+                      .connect_timeout(60)      # 1 minute connect timeout
+                      .pool_timeout(60)         # 1 minute pool timeout
+                      .build())
         logger.info(f"🚀 Using self-hosted Bot API: {ACTUAL_API_URL}")
     else:
-        # Use standard Telegram API
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+        # Use standard Telegram API with connection pooling
+        application = (Application.builder()
+                      .token(TELEGRAM_BOT_TOKEN)
+                      .connection_pool_size(20)  # Increase connection pool
+                      .read_timeout(300)         # 5 minutes read timeout
+                      .write_timeout(300)        # 5 minutes write timeout
+                      .connect_timeout(60)       # 1 minute connect timeout
+                      .pool_timeout(60)         # 1 minute pool timeout
+                      .build())
         logger.info("📱 Using standard Telegram API")
     
     # Оптимизация для Railway deployment - ustawiamy timeout w Application.builder
