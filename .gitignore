@@ -1,0 +1,314 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# celery beat schedule file
+celerybeat-schedule
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+bot.log
+
+# Temporary files
+temp_*
+tmp/
+*.tmp
+
+# Generated videos and video files
+generated_videos/
+telegram_results/
+temp_videos/
+
+# Video files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.wmv
+*.flv
+*.webm
+*.m4v
+*.3gp
+*.mpg
+*.mpeg
+*.m2v
+*.m4p
+*.m4b
+*.m4r
+*.3g2
+*.asf
+*.rm
+*.rmvb
+*.vob
+*.ogv
+*.drc
+*.gif
+*.gifv
+*.mng
+*.avi
+*.mov
+*.qt
+*.wmv
+*.yuv
+*.rm
+*.rmvb
+*.asf
+*.amv
+*.m4p
+*.m4v
+*.svi
+*.3gp
+*.3g2
+*.mxf
+*.roq
+*.nsv
+*.flv
+*.f4v
+*.f4p
+*.f4a
+*.f4b
+
+# Audio files
+*.mp3
+*.wav
+*.flac
+*.aac
+*.ogg
+*.wma
+*.m4a
+*.opus
+*.aiff
+*.au
+*.ra
+*.ram
+*.ac3
+*.dts
+*.eac3
+*.thd
+*.dtshd
+*.truehd
+*.pcm
+*.adpcm
+*.gsm
+*.ulaw
+*.alaw
+*.g722
+*.g726
+*.g729
+*.silk
+*.speex
+*.vorbis
+*.amr
+*.3ga
+*.aax
+*.act
+*.aiff
+*.alac
+*.ape
+*.au
+*.awb
+*.dct
+*.dss
+*.dvf
+*.flac
+*.gsm
+*.iklax
+*.ivs
+*.m4a
+*.mmf
+*.mp3
+*.mpc
+*.msv
+*.nmf
+*.ogg
+*.oga
+*.mogg
+*.opus
+*.ra
+*.rm
+*.raw
+*.rf64
+*.sln
+*.tta
+*.voc
+*.vox
+*.wav
+*.wma
+*.wv
+*.webm
+*.8svx
+*.cda
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.tif
+*.webp
+*.svg
+*.ico
+*.raw
+*.cr2
+*.nef
+*.orf
+*.sr2
+*.arw
+*.dng
+*.heic
+*.heif
+*.psd
+*.ai
+*.eps
+*.pdf
+
+# Credentials
+.env
+*.pem
+*.key
+*.crt
+google_credentials.json
+
+# Node modules (if any)
+node_modules/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Railway
+railway.json
+
+# PID files
+*.pid
+
+# Social media data
+*_stats_*.json
+*_extraction_*.json
+*_posts_*.json
