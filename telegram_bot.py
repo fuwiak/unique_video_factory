@@ -214,8 +214,9 @@ class TelegramVideoBot:
         # WebSocket upload tracking
         self.upload_progress = {}  # user_id -> WebSocketUploadProgress
         self.websocket_server = None
-            # Инициализируем папки на Yandex Disk
-            self.init_yandex_folders()
+        
+        # Инициализируем папки на Yandex Disk
+        self.init_yandex_folders()
         
         # Создаем папки для временных файлов
         self.temp_dir = Path("temp_videos")
