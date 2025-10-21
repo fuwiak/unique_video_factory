@@ -371,7 +371,7 @@ class VideoUniquizer:
         self._update_progress(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
         # Инициализируем VidGear writer
-        writer = WriteGear(output_filename=output_path, logging=False, **output_params)
+        writer = WriteGear(output=output_path, logging=False, **output_params)
         
         frame_count = 0
         start_time = time.time()
@@ -663,7 +663,7 @@ class VideoUniquizer:
         print(f"Применяем эффект '{effect_style}': {effect_params}")
         
         # Инициализируем VidGear writer
-        writer = WriteGear(output_filename=output_path, logging=False, **output_params)
+        writer = WriteGear(output=output_path, logging=False, **output_params)
         
         frame_count = 0
         try:
