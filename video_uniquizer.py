@@ -71,7 +71,14 @@ class VideoUniquizer:
         processed_clip = processed_clip.fx(lambda clip: clip.speedx(speed_factor))
         
         # Сохраняем
-        processed_clip.write_videofile(output_path, codec='libx264', audio_codec='aac')
+        processed_clip.write_videofile(
+            output_path, 
+            codec='libx264', 
+            audio_codec='aac',
+            ffmpeg_params=['-preset', 'fast', '-crf', '23', '-threads', '2'],
+            verbose=False,
+            logger=None
+        )
         processed_clip.close()
         clip.close()
         
@@ -105,7 +112,17 @@ class VideoUniquizer:
             codec='libx264', 
             audio_codec='aac',
             temp_audiofile='temp-audio.m4a',
-            remove_temp=True
+            remove_temp=True,
+            ffmpeg_params=[
+                '-preset', 'fast',  # Быстрая кодировка
+                '-crf', '23',       # Качество
+                '-maxrate', '2M',   # Максимальный битрейт
+                '-bufsize', '4M',   # Размер буфера
+                '-threads', '2',    # Количество потоков
+                '-movflags', '+faststart'  # Оптимизация для стриминга
+            ],
+            verbose=False,
+            logger=None
         )
         
         # Закрываем клипы
@@ -232,7 +249,17 @@ class VideoUniquizer:
             codec='libx264', 
             audio_codec='aac',
             temp_audiofile='temp-audio.m4a',
-            remove_temp=True
+            remove_temp=True,
+            ffmpeg_params=[
+                '-preset', 'fast',  # Быстрая кодировка
+                '-crf', '23',       # Качество
+                '-maxrate', '2M',   # Максимальный битрейт
+                '-bufsize', '4M',   # Размер буфера
+                '-threads', '2',    # Количество потоков
+                '-movflags', '+faststart'  # Оптимизация для стриминга
+            ],
+            verbose=False,
+            logger=None
         )
         
         # Закрываем клипы

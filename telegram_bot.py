@@ -1700,6 +1700,19 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.info(f"✅ Видео {task['index']} обработано и сохранено в: {result_path}")
             print(f"✅ ВИДЕО {task['index']} ГОТОВО: {result_path}")
             
+            # Проверяем что файл действительно создан
+            if not result_path or not os.path.exists(result_path):
+                logger.error(f"❌ Output file not created: {result_path}")
+                return None
+            
+            # Проверяем размер выходного файла
+            output_size = os.path.getsize(result_path)
+            if output_size == 0:
+                logger.error(f"❌ Output file is empty: {result_path}")
+                return None
+            
+            logger.info(f"✅ Video {task['index']} processed successfully: {result_path} ({output_size / (1024*1024):.1f}MB)")
+            
             return {
                 'index': task['index'],
                 'path': result_path,
