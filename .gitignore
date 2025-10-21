@@ -302,7 +302,7 @@ node_modules/
 .dockerignore
 
 # Railway
-# railway.json - needed for Railway deployment
+railway.json
 
 # PID files
 *.pid

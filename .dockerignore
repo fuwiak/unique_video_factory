@@ -195,4 +195,4 @@ Dockerfile
 .dockerignore
 
 # Railway
-# railway.json - needed for deployment
+railway.json

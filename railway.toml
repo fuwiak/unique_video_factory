@@ -1,13 +1,9 @@
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
-# Enable Docker layer caching for faster builds
-cache = true
 
 [deploy]
 healthcheckPath = "/health"
 healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-# Optimize deployment speed
-startCommand = "python telegram_bot.py"

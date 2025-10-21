@@ -2,17 +2,12 @@
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
     "builder": "DOCKERFILE",
-    "dockerfilePath": "Dockerfile",
-    "cache": true,
-    "buildArgs": {
-      "BUILDKIT_INLINE_CACHE": "1"
-    }
+    "dockerfilePath": "Dockerfile"
   },
   "deploy": {
     "healthcheckPath": "/health",
     "healthcheckTimeout": 100,
     "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "startCommand": "python telegram_bot.py"
+    "restartPolicyMaxRetries": 10
   }
 }

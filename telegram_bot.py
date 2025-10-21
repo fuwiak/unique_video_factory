@@ -8,7 +8,7 @@ import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Callable
 import json
 import uuid
 import threading
@@ -16,6 +16,8 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import websockets
+import aiohttp
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -133,6 +135,74 @@ INSTAGRAM_FILTERS = {
 }
 
 
+class WebSocketUploadProgress:
+    """WebSocket upload progress tracker"""
+    
+    def __init__(self, user_id: int, filename: str):
+        self.user_id = user_id
+        self.filename = filename
+        self.uploaded_bytes = 0
+        self.total_bytes = 0
+        self.progress_percent = 0
+        self.status = "starting"
+        self.start_time = time.time()
+        self.websocket_clients = set()
+    
+    def update_progress(self, uploaded: int, total: int):
+        """Update upload progress"""
+        self.uploaded_bytes = uploaded
+        self.total_bytes = total
+        self.progress_percent = (uploaded / total * 100) if total > 0 else 0
+        
+        # Broadcast progress to WebSocket clients
+        self.broadcast_progress()
+    
+    def set_status(self, status: str):
+        """Set upload status"""
+        self.status = status
+        self.broadcast_progress()
+    
+    def broadcast_progress(self):
+        """Broadcast progress to all connected WebSocket clients"""
+        progress_data = {
+            "type": "upload_progress",
+            "user_id": self.user_id,
+            "filename": self.filename,
+            "uploaded_bytes": self.uploaded_bytes,
+            "total_bytes": self.total_bytes,
+            "progress_percent": round(self.progress_percent, 2),
+            "status": self.status,
+            "elapsed_time": time.time() - self.start_time,
+            "speed_mbps": self.calculate_speed()
+        }
+        
+        # Remove disconnected clients
+        disconnected = set()
+        for client in self.websocket_clients:
+            try:
+                asyncio.create_task(client.send(json.dumps(progress_data)))
+            except:
+                disconnected.add(client)
+        
+        for client in disconnected:
+            self.websocket_clients.discard(client)
+    
+    def calculate_speed(self) -> float:
+        """Calculate upload speed in MB/s"""
+        elapsed = time.time() - self.start_time
+        if elapsed > 0:
+            return (self.uploaded_bytes / (1024 * 1024)) / elapsed
+        return 0.0
+    
+    def add_client(self, websocket):
+        """Add WebSocket client for progress updates"""
+        self.websocket_clients.add(websocket)
+    
+    def remove_client(self, websocket):
+        """Remove WebSocket client"""
+        self.websocket_clients.discard(websocket)
+
+
 class TelegramVideoBot:
     """Основной класс бота для обработки видео"""
     
@@ -140,6 +210,10 @@ class TelegramVideoBot:
         self.yandex_disk = None
         if YANDEX_DISK_TOKEN:
             self.yandex_disk = yadisk.YaDisk(token=YANDEX_DISK_TOKEN)
+        
+        # WebSocket upload tracking
+        self.upload_progress = {}  # user_id -> WebSocketUploadProgress
+        self.websocket_server = None
             # Инициализируем папки на Yandex Disk
             self.init_yandex_folders()
         
@@ -1840,15 +1914,18 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     result_path, user_id, filter_id
                 )
             
-            # Отправляем результат
-            await query.message.reply_video(
-                video=open(result_path, 'rb'),
+            # Отправляем результат с WebSocket progress
+            result_filename = f"processed_{user_id}_{filter_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            upload_result = await self.upload_video_with_progress(
+                file_path=result_path,
+                user_id=user_id,
+                context=context,
+                filename=result_filename,
                 caption=f"✅ **ГОТОВО!**\n\n"
                        f"🎨 Фильтр: {filter_info['name']}\n"
                        f"📁 Размер: {os.path.getsize(result_path) / (1024*1024):.1f} MB\n"
                        f"📂 Локальный путь: `{result_path}`"
-                       + (f"\n☁️ Yandex Disk: {yandex_url}" if yandex_url else ""),
-                supports_streaming=True
+                       + (f"\n☁️ Yandex Disk: {yandex_url}" if yandex_url else "")
             )
             
             # Очищаем временные файлы
@@ -2397,6 +2474,161 @@ ID сценария: {video_data['metadata']['scenario_id']}
         except Exception as e:
             logger.error(f"Ошибка загрузки на Yandex Disk: {e}")
             return None, None
+    
+    async def start_websocket_server(self):
+        """Start WebSocket server for upload progress"""
+        try:
+            self.websocket_server = await websockets.serve(
+                self.handle_websocket_connection,
+                "0.0.0.0", 8080
+            )
+            logger.info("🚀 WebSocket server started on port 8080")
+        except Exception as e:
+            logger.error(f"❌ Failed to start WebSocket server: {e}")
+    
+    async def handle_websocket_connection(self, websocket, path):
+        """Handle WebSocket connections for progress updates"""
+        try:
+            async for message in websocket:
+                data = json.loads(message)
+                
+                if data.get("type") == "subscribe_progress":
+                    user_id = data.get("user_id")
+                    if user_id in self.upload_progress:
+                        self.upload_progress[user_id].add_client(websocket)
+                        logger.info(f"📡 WebSocket client subscribed to user {user_id}")
+                
+        except websockets.exceptions.ConnectionClosed:
+            # Remove client from all progress trackers
+            for progress in self.upload_progress.values():
+                progress.remove_client(websocket)
+        except Exception as e:
+            logger.error(f"❌ WebSocket error: {e}")
+    
+    async def upload_video_with_progress(self, file_path: str, user_id: int, context, 
+                                      filename: str, caption: str = "") -> dict:
+        """Upload video with WebSocket progress tracking"""
+        try:
+            file_size = os.path.getsize(file_path)
+            
+            # Create progress tracker
+            progress = WebSocketUploadProgress(user_id, filename)
+            self.upload_progress[user_id] = progress
+            progress.set_status("preparing")
+            
+            # Chunked upload for large files
+            chunk_size = 1024 * 1024  # 1MB chunks
+            uploaded_bytes = 0
+            
+            progress.set_status("uploading")
+            progress.update_progress(0, file_size)
+            
+            # For files > 50MB, use chunked upload
+            if file_size > 50 * 1024 * 1024:
+                return await self.chunked_upload(file_path, user_id, context, 
+                                              filename, caption, progress)
+            
+            # For smaller files, use regular upload with progress
+            with open(file_path, 'rb') as f:
+                # Simulate progress for regular upload
+                for chunk in iter(lambda: f.read(chunk_size), b''):
+                    uploaded_bytes += len(chunk)
+                    progress.update_progress(uploaded_bytes, file_size)
+                    await asyncio.sleep(0.1)  # Small delay for progress updates
+                
+                # Reset file pointer
+                f.seek(0)
+                
+                # Upload to Telegram
+                message = await context.bot.send_document(
+                    chat_id=user_id,
+                    document=f,
+                    filename=filename,
+                    caption=caption
+                )
+            
+            progress.set_status("completed")
+            return {
+                'file_id': message.document.file_id,
+                'file_size': message.document.file_size,
+                'filename': message.document.file_name
+            }
+            
+        except Exception as e:
+            if user_id in self.upload_progress:
+                self.upload_progress[user_id].set_status(f"error: {str(e)}")
+            logger.error(f"❌ Upload error: {e}")
+            raise
+    
+    async def chunked_upload(self, file_path: str, user_id: int, context, 
+                           filename: str, caption: str, progress: WebSocketUploadProgress) -> dict:
+        """Chunked upload for large files"""
+        try:
+            file_size = os.path.getsize(file_path)
+            chunk_size = 5 * 1024 * 1024  # 5MB chunks
+            uploaded_chunks = 0
+            total_chunks = (file_size + chunk_size - 1) // chunk_size
+            
+            progress.set_status("chunked_upload")
+            
+            # Create temporary chunks
+            temp_chunks = []
+            with open(file_path, 'rb') as f:
+                chunk_num = 0
+                while True:
+                    chunk_data = f.read(chunk_size)
+                    if not chunk_data:
+                        break
+                    
+                    chunk_path = f"temp_chunk_{user_id}_{chunk_num}.tmp"
+                    with open(chunk_path, 'wb') as chunk_file:
+                        chunk_file.write(chunk_data)
+                    temp_chunks.append(chunk_path)
+                    
+                    chunk_num += 1
+                    uploaded_chunks += 1
+                    progress.update_progress(
+                        uploaded_chunks * chunk_size, 
+                        file_size
+                    )
+            
+            # Upload first chunk as main document
+            with open(temp_chunks[0], 'rb') as f:
+                message = await context.bot.send_document(
+                    chat_id=user_id,
+                    document=f,
+                    filename=f"{filename}_part1",
+                    caption=f"{caption}\n📦 Часть 1/{len(temp_chunks)}"
+                )
+            
+            # Upload remaining chunks as separate documents
+            for i, chunk_path in enumerate(temp_chunks[1:], 2):
+                with open(chunk_path, 'rb') as f:
+                    await context.bot.send_document(
+                        chat_id=user_id,
+                        document=f,
+                        filename=f"{filename}_part{i}",
+                        caption=f"📦 Часть {i}/{len(temp_chunks)}"
+                    )
+                
+                # Clean up chunk
+                os.unlink(chunk_path)
+            
+            # Clean up first chunk
+            os.unlink(temp_chunks[0])
+            
+            progress.set_status("completed")
+            return {
+                'file_id': message.document.file_id,
+                'file_size': message.document.file_size,
+                'filename': message.document.file_name,
+                'chunks': len(temp_chunks)
+            }
+            
+        except Exception as e:
+            progress.set_status(f"error: {str(e)}")
+            logger.error(f"❌ Chunked upload error: {e}")
+            raise
 
 
 def main():
@@ -2416,6 +2648,9 @@ def main():
     
     # Оптимизация для Railway deployment - ustawiamy timeout w Application.builder
     # Timeout settings są już wbudowane w python-telegram-bot
+    
+    # Start WebSocket server for upload progress
+    asyncio.create_task(bot.start_websocket_server())
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))
