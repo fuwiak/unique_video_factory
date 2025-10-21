@@ -115,7 +115,7 @@ def start_self_hosted_api_server():
                     "--api-hash", api_hash,
                     "--local",
                     "--http-port", "8081",
-                    "--log-level", "1"
+                    "--verbosity=1"
                 ]
                 
                 logger.info("🚀 Starting self-hosted Bot API server...")
@@ -171,21 +171,18 @@ if USE_SELF_HOSTED_API:
         api_available = start_self_hosted_api_server()
         logger.info(f"   Server started: {api_available}")
     
-    # Force use self-hosted API for Railway deployment
-    if USE_SELF_HOSTED_API:
-        logger.info("🚀 FORCING self-hosted Bot API usage (Railway deployment)")
-        ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
-        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
-        logger.info(f"   Using API URL: {ACTUAL_API_URL}")
-        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
-    elif api_available:
-        logger.info("🚀 Self-hosted Bot API detected and available")
-        ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
-        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
-    else:
-        logger.warning("⚠️ Self-hosted API enabled but not available, falling back to standard API")
-        ACTUAL_API_URL = "https://api.telegram.org"
-        ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
+    # Require self-hosted API to be available
+    if not api_available:
+        logger.error("❌ Self-hosted Bot API is required but not available. Aborting startup.")
+        logger.error(f"   Expected to reach: {SELF_HOSTED_API_URL}")
+        logger.error("   Install the telegram-bot-api binary or start the docker service before running the bot.")
+        raise RuntimeError("Self-hosted Bot API not reachable")
+
+    logger.info("🚀 Using self-hosted Bot API (Railway deployment)")
+    ACTUAL_API_URL = SELF_HOSTED_BOT_API_URL
+    ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+    logger.info(f"   Using API URL: {ACTUAL_API_URL}")
+    logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
 else:
     logger.info("📱 Using standard Telegram API (20MB limit)")
     ACTUAL_API_URL = "https://api.telegram.org"
