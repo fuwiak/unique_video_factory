@@ -6,6 +6,7 @@ import torch.nn.functional as F
 from moviepy.editor import VideoFileClip, CompositeVideoClip
 import random
 import os
+import time
 from typing import Tuple, List, Optional
 import json
 from tqdm import tqdm
@@ -250,14 +251,26 @@ class VideoUniquizer:
         """
         MoviePy implementation of social effects
         """
+        print("🎬 Using MoviePy for video processing...")
+        logging.info("🎬 Starting MoviePy video processing...")
+        
         # Загружаем видео с аудио
         clip = VideoFileClip(video_path)
+        
+        # Получаем информацию о видео
+        duration = clip.duration
+        fps = clip.fps
+        total_frames = int(duration * fps) if fps else 0
+        
+        print(f"📹 Video info: {clip.w}x{clip.h} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
+        logging.info(f"📹 Video info: {clip.w}x{clip.h} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
         
         # Случайно выбираем стиль эффекта
         effect_style = random.choice(list(self.social_effects.keys()))
         effect_params = self.social_effects[effect_style]
         
-        print(f"Применяем эффект '{effect_style}': {effect_params}")
+        print(f"🎨 Applying effect '{effect_style}': {effect_params}")
+        logging.info(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
         # Применяем эффекты к каждому кадру
         def apply_effect(get_frame, t):
@@ -266,6 +279,17 @@ class VideoUniquizer:
         
         # Создаем новый клип с эффектами
         processed_clip = clip.fl(apply_effect)
+        
+        # Progress callback for MoviePy
+        def progress_callback(t):
+            progress_pct = (t / duration) * 100 if duration > 0 else 0
+            if int(progress_pct) % 10 == 0:  # Every 10%
+                print(f"📊 MoviePy Progress: {t:.1f}s/{duration:.1f}s ({progress_pct:.1f}%)")
+                logging.info(f"📊 MoviePy Progress: {t:.1f}s/{duration:.1f}s ({progress_pct:.1f}%)")
+        
+        start_time = time.time()
+        print("🎬 Starting MoviePy encoding...")
+        logging.info("🎬 Starting MoviePy encoding...")
         
         # Сохраняем с аудио
         processed_clip.write_videofile(
@@ -286,6 +310,10 @@ class VideoUniquizer:
             logger=None
         )
         
+        total_time = time.time() - start_time
+        print(f"✅ MoviePy processing completed in {total_time:.1f}s")
+        logging.info(f"✅ MoviePy processing completed in {total_time:.1f}s")
+        
         # Закрываем клипы
         processed_clip.close()
         clip.close()
@@ -297,6 +325,7 @@ class VideoUniquizer:
         VidGear fallback implementation for social effects
         """
         print("🎬 Using VidGear for video processing...")
+        logging.info("🎬 Starting VidGear video processing...")
         
         # Открываем видео с помощью OpenCV
         cap = cv2.VideoCapture(video_path)
@@ -308,8 +337,10 @@ class VideoUniquizer:
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration = total_frames / fps if fps > 0 else 0
         
-        print(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames")
+        print(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
+        logging.info(f"📹 Video info: {width}x{height} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
         
         # Настройки VidGear
         output_params = {
@@ -326,12 +357,14 @@ class VideoUniquizer:
         effect_style = random.choice(list(self.social_effects.keys()))
         effect_params = self.social_effects[effect_style]
         
-        print(f"Применяем эффект '{effect_style}': {effect_params}")
+        print(f"🎨 Applying effect '{effect_style}': {effect_params}")
+        logging.info(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
         # Инициализируем VidGear writer
         writer = WriteGear(output_filename=output_path, logging=False, **output_params)
         
         frame_count = 0
+        start_time = time.time()
         try:
             while True:
                 ret, frame = cap.read()
@@ -345,15 +378,30 @@ class VideoUniquizer:
                 writer.write(processed_frame)
                 
                 frame_count += 1
-                if frame_count % 30 == 0:  # Progress every 30 frames
-                    print(f"📊 Processed {frame_count}/{total_frames} frames ({frame_count/total_frames*100:.1f}%)")
+                
+                # Progress reporting every 30 frames or every 5%
+                progress_interval = max(30, total_frames // 20)  # At least every 5%
+                if frame_count % progress_interval == 0 or frame_count == total_frames:
+                    progress_pct = (frame_count / total_frames) * 100
+                    elapsed_time = time.time() - start_time
+                    fps_actual = frame_count / elapsed_time if elapsed_time > 0 else 0
+                    eta_seconds = (total_frames - frame_count) / fps_actual if fps_actual > 0 else 0
+                    
+                    print(f"📊 Progress: {frame_count}/{total_frames} frames ({progress_pct:.1f}%) | "
+                          f"Speed: {fps_actual:.1f} fps | ETA: {eta_seconds:.1f}s")
+                    logging.info(f"📊 VidGear Progress: {frame_count}/{total_frames} frames ({progress_pct:.1f}%) | "
+                               f"Speed: {fps_actual:.1f} fps | ETA: {eta_seconds:.1f}s")
         
         finally:
             # Закрываем все
             cap.release()
             writer.close()
         
-        print(f"✅ VidGear processing completed: {frame_count} frames")
+        total_time = time.time() - start_time
+        avg_fps = frame_count / total_time if total_time > 0 else 0
+        
+        print(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
+        logging.info(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
         
         # Проверяем что файл создан и не пустой
         if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
@@ -493,27 +541,52 @@ class VideoUniquizer:
         if effects is None:
             effects = ['temporal', 'social']  # Используем социальные эффекты вместо нейросетевых
         
-        print(f"Уникализация видео: {input_path}")
-        print(f"Применяемые эффекты: {effects}")
+        print(f"🎬 Уникализация видео: {input_path}")
+        print(f"🎨 Применяемые эффекты: {effects}")
+        logging.info(f"🎬 Starting video uniquization: {input_path}")
+        logging.info(f"🎨 Effects to apply: {effects}")
+        
+        # Получаем информацию о входном видео
+        try:
+            input_clip = VideoFileClip(input_path)
+            input_duration = input_clip.duration
+            input_fps = input_clip.fps
+            input_frames = int(input_duration * input_fps) if input_fps else 0
+            input_clip.close()
+            
+            print(f"📹 Input video: {input_duration:.1f}s @ {input_fps}fps ({input_frames} frames)")
+            logging.info(f"📹 Input video: {input_duration:.1f}s @ {input_fps}fps ({input_frames} frames)")
+        except Exception as e:
+            print(f"⚠️ Could not get input video info: {e}")
+            logging.warning(f"⚠️ Could not get input video info: {e}")
         
         temp_path = f"temp_{random.randint(1000, 9999)}.mp4"
         current_path = input_path
+        start_time = time.time()
         
         try:
             # Применяем эффекты последовательно
             for i, effect in enumerate(effects):
+                effect_start = time.time()
+                print(f"🔄 Step {i+1}/{len(effects)}: Applying {effect} effects...")
+                logging.info(f"🔄 Step {i+1}/{len(effects)}: Applying {effect} effects...")
+                
                 if effect == 'temporal':
-                    print("Применяем временные эффекты...")
+                    print("⏱️ Применяем временные эффекты...")
                     self.apply_temporal_effects(current_path, temp_path)
                 elif effect == 'visual':
-                    print("Применяем визуальные эффекты...")
+                    print("👁️ Применяем визуальные эффекты...")
                     self.apply_visual_effects(current_path, temp_path)
                 elif effect == 'neural':
-                    print("Применяем нейросетевые эффекты...")
+                    print("🧠 Применяем нейросетевые эффекты...")
                     self.apply_neural_effects(current_path, temp_path)
                 elif effect == 'social':
-                    print("Применяем эффекты социальных сетей...")
+                    print("📱 Применяем эффекты социальных сетей...")
                     self.apply_social_effects(current_path, temp_path)
+                
+                effect_time = time.time() - effect_start
+                print(f"✅ {effect} effects completed in {effect_time:.1f}s")
+                logging.info(f"✅ {effect} effects completed in {effect_time:.1f}s")
                 
                 # Обновляем путь для следующего эффекта
                 if i > 0:  # Удаляем предыдущий временный файл
@@ -525,15 +598,23 @@ class VideoUniquizer:
             
             # Переименовываем финальный файл
             os.rename(current_path, output_path)
-            print(f"Видео успешно уникализировано: {output_path}")
+            total_time = time.time() - start_time
+            
+            print(f"🎉 Видео успешно уникализировано: {output_path}")
+            print(f"⏱️ Total processing time: {total_time:.1f}s")
+            logging.info(f"🎉 Video successfully uniquized: {output_path}")
+            logging.info(f"⏱️ Total processing time: {total_time:.1f}s")
             
         except Exception as e:
             print(f"⚠️ MoviePy processing failed: {e}")
+            logging.error(f"⚠️ MoviePy processing failed: {e}")
             if VIDGEAR_AVAILABLE:
                 print("🔄 Trying VidGear fallback for full video processing...")
+                logging.info("🔄 Trying VidGear fallback for full video processing...")
                 return self._uniquize_video_vidgear(input_path, output_path, effects)
             else:
                 print("❌ No fallback available, re-raising error")
+                logging.error("❌ No fallback available, re-raising error")
                 # Очищаем временные файлы
                 for temp_file in [temp_path, current_path]:
                     if os.path.exists(temp_file):

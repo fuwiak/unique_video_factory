@@ -1716,6 +1716,20 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.info(f"📊 Output file size: {output_size} bytes ({output_size/1024/1024:.1f} MB)")
             logger.info(f"✅ Video {task['index']} processed successfully: {result_path} ({output_size / (1024*1024):.1f}MB)")
             
+            # Dodatkowe informacje o przetworzonym video
+            try:
+                from moviepy.editor import VideoFileClip
+                output_clip = VideoFileClip(result_path)
+                output_duration = output_clip.duration
+                output_fps = output_clip.fps
+                output_clip.close()
+                
+                print(f"📹 Output video: {output_duration:.1f}s @ {output_fps}fps")
+                logger.info(f"📹 Output video: {output_duration:.1f}s @ {output_fps}fps")
+            except Exception as e:
+                print(f"⚠️ Could not get output video info: {e}")
+                logger.warning(f"⚠️ Could not get output video info: {e}")
+            
             return {
                 'index': task['index'],
                 'path': result_path,
