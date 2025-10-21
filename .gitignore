@@ -299,7 +299,6 @@ google_credentials.json
 node_modules/
 
 # Docker
-Dockerfile
 .dockerignore
 
 # Railway
