@@ -33,6 +33,7 @@ services:
     container_name: unique-video-factory-bot
     ports:
       - "8000:8000"
+      - "8082:8082"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - YANDEX_DISK_TOKEN=${YANDEX_DISK_TOKEN}

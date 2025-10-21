@@ -73,8 +73,8 @@ ENV OPENBLAS_NUM_THREADS=2
 ENV VECLIB_MAXIMUM_THREADS=2
 ENV NUMEXPR_NUM_THREADS=2
 
-# Expose port (Railway will set PORT env var)
-EXPOSE 8000 8081
+# Expose ports (Railway will set PORT env var)
+EXPOSE 8000 8081 8082
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

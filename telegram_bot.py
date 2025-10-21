@@ -1472,6 +1472,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         if result:
                             processed_videos.append(result)
                             completed += 1
+                            logger.info(f"✅ Video {task['index']} processed successfully")
+                        else:
+                            logger.warning(f"⚠️ Video {task['index']} processing returned None")
                             
                             # Обновляем прогресс в Telegram с информацией о компрессии
                             progress = f"🎬 **ПРОГРЕСС ОБРАБОТКИ**\n\n"
@@ -1711,6 +1714,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
         except Exception as e:
             logger.error(f"❌ Ошибка обработки видео {task['index']}: {e}")
+            logger.error(f"   Task details: {task}")
+            import traceback
+            logger.error(f"   Traceback: {traceback.format_exc()}")
             return None
     
     async def handle_filter_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2708,11 +2714,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
     async def start_websocket_server(self):
         """Start WebSocket server for upload progress"""
         try:
+            # Use port 8082 for WebSocket (8081 is used by self-hosted API)
+            websocket_port = 8082
             self.websocket_server = await websockets.serve(
                 self.handle_websocket_connection,
-                "0.0.0.0", 8081
+                "0.0.0.0", websocket_port
             )
-            logger.info("🚀 WebSocket server started on port 8081")
+            logger.info(f"🚀 WebSocket server started on port {websocket_port}")
         except Exception as e:
             logger.error(f"❌ Failed to start WebSocket server: {e}")
     
