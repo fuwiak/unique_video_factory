@@ -1074,14 +1074,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
             file_size_mb = user_states[user_id]['file_size'] / (1024 * 1024)
             logger.info(f"📥 Проверяю размер файла: {user_states[user_id]['filename']}, размер: {file_size_mb:.1f} MB")
             
-            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит: 20 MB")
-            if file_size_mb > 20:  # Если файл больше 20MB, автоматически сжимаем
-                logger.info(f"🚨 Файл превышает лимит! Начинаю компрессию...")
+            # Railway deployment - używamy 2GB limit zamiast 20MB
+            railway_limit_mb = 2000  # 2GB limit na Railway
+            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит Railway: {railway_limit_mb} MB")
+            if file_size_mb > railway_limit_mb:  # Jeśli файл больше 2GB, автоматически сжимаем
+                logger.info(f"🚨 Файл превышает Railway лимит! Начинаю компрессию...")
                 await query.message.edit_text(
                     f"📦 **АВТОМАТИЧЕСКАЯ КОМПРЕССИЯ**\n\n"
                     f"📁 Размер: {file_size_mb:.1f} MB\n"
                     f"📁 Имя: {user_states[user_id]['filename']}\n\n"
-                    f"🔄 Сжимаю до < 20MB...\n"
+                    f"🔄 Сжимаю до < {railway_limit_mb}MB...\n"
                     f"⏳ Пожалуйста, подождите..."
                 )
                 
@@ -1624,14 +1626,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
             file_size_mb = user_states[user_id]['file_size'] / (1024 * 1024)
             logger.info(f"📥 Проверяю размер файла: {user_states[user_id]['filename']}, размер: {file_size_mb:.1f} MB")
             
-            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит: 20 MB")
-            if file_size_mb > 20:  # Если файл больше 20MB, автоматически сжимаем
-                logger.info(f"🚨 Файл превышает лимит! Начинаю компрессию...")
+            # Railway deployment - używamy 2GB limit zamiast 20MB
+            railway_limit_mb = 2000  # 2GB limit na Railway
+            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит Railway: {railway_limit_mb} MB")
+            if file_size_mb > railway_limit_mb:  # Jeśli файл больше 2GB, автоматически сжимаем
+                logger.info(f"🚨 Файл превышает Railway лимит! Начинаю компрессию...")
                 await query.message.edit_text(
                     f"📦 **АВТОМАТИЧЕСКАЯ КОМПРЕССИЯ**\n\n"
                     f"📁 Размер: {file_size_mb:.1f} MB\n"
                     f"📁 Имя: {user_states[user_id]['filename']}\n\n"
-                    f"🔄 Сжимаю до < 20MB...\n"
+                    f"🔄 Сжимаю до < {railway_limit_mb}MB...\n"
                     f"⏳ Пожалуйста, подождите..."
                 )
                 
@@ -1805,14 +1809,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
             file_size_mb = user_states[user_id]['file_size'] / (1024 * 1024)
             logger.info(f"📥 Проверяю размер файла: {user_states[user_id]['filename']}, размер: {file_size_mb:.1f} MB")
             
-            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит: 20 MB")
-            if file_size_mb > 20:  # Если файл больше 20MB, автоматически сжимаем
-                logger.info(f"🚨 Файл превышает лимит! Начинаю компрессию...")
+            # Railway deployment - używamy 2GB limit zamiast 20MB
+            railway_limit_mb = 2000  # 2GB limit na Railway
+            logger.info(f"📊 Размер файла: {file_size_mb:.1f} MB, лимит Railway: {railway_limit_mb} MB")
+            if file_size_mb > railway_limit_mb:  # Jeśli файл больше 2GB, автоматически сжимаем
+                logger.info(f"🚨 Файл превышает Railway лимит! Начинаю компрессию...")
                 await query.message.edit_text(
                     f"📦 **АВТОМАТИЧЕСКАЯ КОМПРЕССИЯ**\n\n"
                     f"📁 Размер: {file_size_mb:.1f} MB\n"
                     f"📁 Имя: {user_states[user_id]['filename']}\n\n"
-                    f"🔄 Сжимаю до < 20MB...\n"
+                    f"🔄 Сжимаю до < {railway_limit_mb}MB...\n"
                     f"⏳ Пожалуйста, подождите..."
                 )
                 
@@ -2305,7 +2311,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.error(f"❌ Ошибка обрезки видео: {e}")
             return file_path
     
-    def compress_video_if_needed_sync(self, file_path: str, max_size_mb: int = 300) -> str:
+    def compress_video_if_needed_sync(self, file_path: str, max_size_mb: int = 2000) -> str:
         """Сжимает видео если оно слишком большое (синхронная версия)"""
         try:
             import subprocess
@@ -2352,7 +2358,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.error(f"❌ Ошибка сжатия видео: {e}")
             return file_path
     
-    async def compress_video_if_needed(self, file_path: str, max_size_mb: int = 300) -> str:
+    async def compress_video_if_needed(self, file_path: str, max_size_mb: int = 2000) -> str:
         """Сжимает видео если оно слишком большое"""
         try:
             import subprocess
