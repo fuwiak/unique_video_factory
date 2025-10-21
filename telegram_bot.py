@@ -878,10 +878,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             telegram_document_limit = MAX_FILE_SIZE_MB  # 2GB
             logger.info(f"🚀 Self-hosted Bot API enabled - max file size: {MAX_FILE_SIZE_MB}MB")
         else:
-            # Стандартный Telegram API
-            telegram_video_limit = 20  # MB - безопасный limit для video
-            logger.info("📱 Using standard Telegram API - limited file sizes")  # MB - bezpieczny limit dla video
-        telegram_document_limit = 50  # MB - limit dla dokumentów
+            # Railway deployment - używamy 2GB limit
+            telegram_video_limit = 2000  # MB - Railway limit 2GB
+            logger.info("📱 Using Railway deployment - 2GB file size limit")
+        telegram_document_limit = 2000  # MB - Railway limit dla dokumentów
         
         if file_size_mb > telegram_video_limit and (video or file_name.lower().endswith(('.mp4', '.mov', '.avi'))):
             # Dla video plików limit jest niższy - próbujemy z kompresją lub podziałem
