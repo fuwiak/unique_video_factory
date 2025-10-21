@@ -45,8 +45,9 @@ YANDEX_DISK_FOLDER = os.getenv('YANDEX_DISK_FOLDER', 'unique_video_factory')
 MAX_VIDEO_SIZE_MB = int(os.getenv('MAX_VIDEO_SIZE_MB', '300'))
 
 # Self-hosted Bot API configuration
-USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'false').lower() == 'true'
-SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'https://api.telegram.org')
+# Auto-enable self-hosted API for Railway deployment
+USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'true').lower() == 'true'  # Default to true for Railway
+SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'http://localhost:8081')
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '2000'))  # 2GB for self-hosted
 
 # Auto-detect self-hosted API availability
@@ -59,15 +60,89 @@ def check_self_hosted_api():
     except:
         return False
 
+def start_self_hosted_api_server():
+    """Start self-hosted Bot API server for Railway deployment"""
+    try:
+        import subprocess
+        import threading
+        
+        # Check if we have API credentials
+        api_id = os.getenv('TELEGRAM_API_ID')
+        api_hash = os.getenv('TELEGRAM_API_HASH')
+        
+        if not api_id or not api_hash:
+            logger.warning("⚠️ TELEGRAM_API_ID or TELEGRAM_API_HASH not found, skipping self-hosted API")
+            return False
+        
+        # Start Bot API server in background
+        def run_server():
+            try:
+                server_args = [
+                    "telegram-bot-api",
+                    "--api-id", api_id,
+                    "--api-hash", api_hash,
+                    "--local",
+                    "--http-port", "8081",
+                    "--log-level", "1"
+                ]
+                
+                logger.info("🚀 Starting self-hosted Bot API server...")
+                subprocess.run(server_args, check=True)
+            except Exception as e:
+                logger.error(f"❌ Failed to start self-hosted API server: {e}")
+        
+        # Start server in background thread
+        server_thread = threading.Thread(target=run_server, daemon=True)
+        server_thread.start()
+        
+        # Wait for server to start
+        import time
+        time.sleep(3)
+        
+        # Check if server is running
+        if check_self_hosted_api():
+            logger.info("✅ Self-hosted Bot API server started successfully")
+            return True
+        else:
+            logger.warning("⚠️ Self-hosted API server failed to start")
+            return False
+            
+    except Exception as e:
+        logger.error(f"❌ Error starting self-hosted API server: {e}")
+        return False
+
 # Check if we should use self-hosted API
-if USE_SELF_HOSTED_API and check_self_hosted_api():
-    logger.info("🚀 Self-hosted Bot API detected and available")
-    ACTUAL_API_URL = SELF_HOSTED_API_URL
-    ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+logger.info(f"🔍 Checking self-hosted API configuration:")
+logger.info(f"   USE_SELF_HOSTED_API: {USE_SELF_HOSTED_API}")
+logger.info(f"   SELF_HOSTED_API_URL: {SELF_HOSTED_API_URL}")
+logger.info(f"   MAX_FILE_SIZE_MB: {MAX_FILE_SIZE_MB}")
+
+if USE_SELF_HOSTED_API:
+    logger.info("🔍 Self-hosted API is enabled, checking availability...")
+    api_available = check_self_hosted_api()
+    logger.info(f"   API available: {api_available}")
+    
+    if not api_available:
+        logger.info("🔄 Self-hosted API not available, attempting to start server...")
+        api_available = start_self_hosted_api_server()
+        logger.info(f"   Server started: {api_available}")
+    
+    if api_available:
+        logger.info("🚀 Self-hosted Bot API detected and available")
+        ACTUAL_API_URL = SELF_HOSTED_API_URL
+        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+    else:
+        logger.warning("⚠️ Self-hosted API enabled but not available, falling back to standard API")
+        ACTUAL_API_URL = "https://api.telegram.org"
+        ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
 else:
     logger.info("📱 Using standard Telegram API (20MB limit)")
     ACTUAL_API_URL = "https://api.telegram.org"
     ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
+
+logger.info(f"🎯 Final configuration:")
+logger.info(f"   ACTUAL_API_URL: {ACTUAL_API_URL}")
+logger.info(f"   ACTUAL_MAX_FILE_SIZE: {ACTUAL_MAX_FILE_SIZE}MB")
 
 # Состояния пользователей
 user_states = {}

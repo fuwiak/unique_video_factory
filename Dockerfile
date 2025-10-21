@@ -8,7 +8,12 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    wget \
     && rm -rf /var/lib/apt/lists/*
+
+# Download and install telegram-bot-api
+RUN wget -O /usr/local/bin/telegram-bot-api https://github.com/tdlib/telegram-bot-api/releases/latest/download/telegram-bot-api \
+    && chmod +x /usr/local/bin/telegram-bot-api
 
 # Copy requirements first for better caching
 COPY requirements.txt .
