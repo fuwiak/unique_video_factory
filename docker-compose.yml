@@ -25,13 +25,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    networks:
+      - bot-network
 
   bot:
     build: .
     container_name: unique-video-factory-bot
     ports:
       - "8000:8000"
-      - "8081:8081"
     environment:
       - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       - YANDEX_DISK_TOKEN=${YANDEX_DISK_TOKEN}
@@ -48,3 +49,9 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - bot-network
+
+networks:
+  bot-network:
+    driver: bridge
