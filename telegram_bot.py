@@ -79,8 +79,21 @@ def start_self_hosted_api_server():
         telegram_bot_api_path = shutil.which("telegram-bot-api")
         
         if not telegram_bot_api_path:
-            logger.warning("⚠️ telegram-bot-api binary not found, skipping self-hosted API")
-            return False
+            # Try to find it in common locations
+            possible_paths = [
+                "/usr/local/bin/telegram-bot-api",
+                "/usr/bin/telegram-bot-api",
+                "./telegram-bot-api"
+            ]
+            
+            for path in possible_paths:
+                if os.path.exists(path) and os.access(path, os.X_OK):
+                    telegram_bot_api_path = path
+                    break
+            
+            if not telegram_bot_api_path:
+                logger.warning("⚠️ telegram-bot-api binary not found, skipping self-hosted API")
+                return False
         
         # Start Bot API server in background
         def run_server():
@@ -2784,6 +2797,28 @@ def main():
         await bot.start_websocket_server()
     
     application.post_init = start_websocket
+    
+    # Start self-hosted Bot API server if enabled
+    if USE_SELF_HOSTED_API:
+        logger.info("🚀 Attempting to start self-hosted Bot API server...")
+        try:
+            # Start server in background
+            import threading
+            server_thread = threading.Thread(target=start_self_hosted_api_server, daemon=True)
+            server_thread.start()
+            
+            # Wait a bit for server to start
+            import time
+            time.sleep(5)
+            
+            # Check if server is running
+            if check_self_hosted_api():
+                logger.info("✅ Self-hosted Bot API server started successfully")
+            else:
+                logger.warning("⚠️ Self-hosted Bot API server failed to start, using standard API")
+        except Exception as e:
+            logger.error(f"❌ Error starting self-hosted API server: {e}")
+            logger.info("📱 Falling back to standard Telegram API")
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))

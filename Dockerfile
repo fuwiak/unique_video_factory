@@ -11,8 +11,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Install telegram-bot-api from source (fallback approach)
-# Note: This is a simplified approach - for production, consider using a pre-built image
+# Install telegram-bot-api from source
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
@@ -21,9 +20,17 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# For now, we'll skip telegram-bot-api installation and use standard API
-# The bot will automatically fall back to standard API if self-hosted is not available
-RUN echo "telegram-bot-api will be handled by the bot application"
+# Clone and build telegram-bot-api from source
+RUN git clone https://github.com/tdlib/telegram-bot-api.git /tmp/telegram-bot-api \
+    && cd /tmp/telegram-bot-api \
+    && mkdir build \
+    && cd build \
+    && cmake .. \
+    && make -j$(nproc) \
+    && cp telegram-bot-api /usr/local/bin/ \
+    && chmod +x /usr/local/bin/telegram-bot-api \
+    && cd / \
+    && rm -rf /tmp/telegram-bot-api
 
 # Copy requirements first for better caching
 COPY requirements.txt .
