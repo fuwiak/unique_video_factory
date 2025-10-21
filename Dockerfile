@@ -80,5 +80,38 @@ EXPOSE 8000 8081
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application
-CMD ["python", "telegram_bot.py"]
+# Create startup script for Railway
+RUN echo '#!/bin/bash\n\
+echo "🚀 Starting self-hosted Bot API server..."\n\
+\n\
+# Start telegram-bot-api in background\n\
+if [ -n "$TELEGRAM_API_ID" ] && [ -n "$TELEGRAM_API_HASH" ]; then\n\
+    echo "✅ Starting telegram-bot-api with API ID: $TELEGRAM_API_ID"\n\
+    /usr/local/bin/telegram-bot-api \\\n\
+        --api-id "$TELEGRAM_API_ID" \\\n\
+        --api-hash "$TELEGRAM_API_HASH" \\\n\
+        --local \\\n\
+        --http-port 8081 \\\n\
+        --log-level 1 &\n\
+    \n\
+    # Wait for API to start\n\
+    echo "⏳ Waiting for self-hosted API to start..."\n\
+    sleep 10\n\
+    \n\
+    # Check if API is running\n\
+    if curl -s http://localhost:8081/health > /dev/null 2>&1; then\n\
+        echo "✅ Self-hosted Bot API is running"\n\
+    else\n\
+        echo "⚠️ Self-hosted Bot API may not be responding"\n\
+    fi\n\
+else\n\
+    echo "⚠️ TELEGRAM_API_ID or TELEGRAM_API_HASH not set"\n\
+    echo "   Self-hosted API will not start"\n\
+fi\n\
+\n\
+echo "🤖 Starting Telegram bot..."\n\
+exec python telegram_bot.py\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Run the startup script
+CMD ["/app/start.sh"]

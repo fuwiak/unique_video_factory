@@ -1,134 +1,103 @@
-# Railway Deployment Guide
+# 🚀 Railway Deployment - Self-Hosted Bot API
 
-## 🚀 Deploy Telegram Bot na Railway
+## Problem: 20MB File Size Limit
 
-### 1. Przygotowanie
+**Standardowy Telegram API ma limit 20MB dla video files.** Railway deployment automatycznie uruchamia self-hosted Bot API dla plików do 2GB.
 
-1. **Fork/Clone repository** na GitHub
-2. **Skonfiguruj zmienne środowiskowe** w Railway
-3. **Deploy na Railway**
+## ✅ Automatyczne uruchamianie na Railway
 
-### 2. Railway Configuration
+Railway automatycznie:
 
-#### Wymagane zmienne środowiskowe:
+1. **Kompiluje telegram-bot-api** z source code
+2. **Uruchamia self-hosted API server** w tle
+3. **Skonfiguruje bot** do używania self-hosted API
+4. **Obsłuży pliki do 2GB**
+
+## ⚙️ Konfiguracja Railway
+
+### 1. Pobierz Telegram API credentials
+
+1. Idź na https://my.telegram.org/apps
+2. Zaloguj się swoim numerem telefonu
+3. Utwórz nową aplikację:
+   - **App title**: Unique Video Factory Bot
+   - **Short name**: unique_video_factory
+   - **Platform**: Desktop
+4. Skopiuj **API ID** i **API Hash**
+
+### 2. Dodaj do Railway Environment Variables
+
+W Railway dashboard, dodaj następujące zmienne środowiskowe:
 
 ```bash
-# Telegram Bot
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+# Telegram Bot Token (już masz)
+TELEGRAM_BOT_TOKEN=your_bot_token_here
 
-# Yandex Disk
-YANDEX_DISK_TOKEN=your_yandex_disk_token_here
+# Self-hosted Bot API credentials
+TELEGRAM_API_ID=your_api_id_here
+TELEGRAM_API_HASH=your_api_hash_here
+
+# Self-hosted Bot API configuration
+USE_SELF_HOSTED_API=true
+SELF_HOSTED_API_URL=http://localhost:8081
+MAX_FILE_SIZE_MB=2000
+
+# Yandex Disk (opcjonalnie)
+YANDEX_DISK_TOKEN=your_yandex_token_here
 YANDEX_DISK_FOLDER=unique_video_factory
-
-# Railway
-PORT=8000
-PYTHONPATH=/app
-PYTHONUNBUFFERED=1
 ```
 
-#### Opcjonalne zmienne:
+### 3. Deploy na Railway
 
-```bash
-# Self-hosted Bot API (dla plików >20MB)
-USE_SELF_HOSTED_API=false
-SELF_HOSTED_API_URL=https://your-bot-api-server.com
-MAX_FILE_SIZE_MB=50
+Railway automatycznie:
+- ✅ Skompiluje telegram-bot-api z source
+- ✅ Uruchomi self-hosted Bot API server
+- ✅ Skonfiguruje bot do używania self-hosted API
+- ✅ Obsłuży pliki do 2GB
 
-# Video Processing
-MAX_VIDEO_SIZE_MB=50
-VIDEO_COMPRESSION_QUALITY=30
-VIDEO_SCALE=1280:720
+## 🎯 Rezultat
 
-# Social Media APIs
-INSTAGRAM_USERNAME=your_instagram_username
-INSTAGRAM_PASSWORD=your_instagram_password
-TIKTOK_USERNAME=your_tiktok_username
-VK_ACCESS_TOKEN=your_vk_access_token
-YOUTUBE_API_KEY=your_youtube_api_key
+Po konfiguracji:
 
-# Google Sheets
-GOOGLE_CREDENTIALS_FILE=google_credentials.json
-GOOGLE_SHEET_ID=your_google_sheet_id
-```
+- ✅ **Pliki do 2GB** (zamiast 20MB)
+- ✅ **29MB .MOV files** - bez problemów
+- ✅ **Brak limitów** na pobieranie/upload
+- ✅ **Szybsze przesyłanie** (lokalny serwer)
 
-### 3. Deployment Steps
+## 📊 Porównanie limitów:
 
-1. **Zaloguj się na Railway**: https://railway.app
-2. **New Project** → **Deploy from GitHub repo**
-3. **Wybierz repository** z tym kodem
-4. **Skonfiguruj zmienne środowiskowe** w Railway dashboard
-5. **Deploy**
+| API Type | Video Limit | Document Limit | Download Limit |
+|----------|-------------|----------------|----------------|
+| Standard Telegram | 20MB | 50MB | 20MB |
+| Self-hosted (Railway) | 2GB | 2GB | 2GB |
 
-### 4. Railway Features
+## 🔧 Troubleshooting
 
-- ✅ **Automatic deployment** z GitHub
-- ✅ **Environment variables** management
-- ✅ **Health checks** na `/health` endpoint
-- ✅ **Logs** w Railway dashboard
-- ✅ **Scaling** automatyczne
-- ✅ **Custom domains** (opcjonalnie)
+### Problem: "API ID/Hash not found"
+- Sprawdź czy dodałeś `TELEGRAM_API_ID` i `TELEGRAM_API_HASH` do Railway environment variables
+- Upewnij się że credentials są poprawne
 
-### 5. Health Check
+### Problem: "Self-hosted API not available"
+- Sprawdź logi Railway deployment
+- Upewnij się że `USE_SELF_HOSTED_API=true`
+- Sprawdź czy telegram-bot-api został skompilowany
 
-Bot automatycznie uruchamia health check server na porcie 8000:
+### Problem: "Still getting 20MB limit"
+- Sprawdź logi bota - powinien pokazać "🚀 Self-hosted Bot API is running"
+- Sprawdź czy `ACTUAL_MAX_FILE_SIZE: 2000MB` w logach
 
-```bash
-curl https://your-app.railway.app/health
-```
+## 🚀 Automatyczne funkcje
 
-Response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2025-10-21T19:45:00.000Z",
-  "service": "telegram-bot"
-}
-```
+Railway deployment automatycznie:
 
-### 6. Monitoring
+1. **Kompiluje telegram-bot-api** z source code
+2. **Uruchamia self-hosted API server** w tle
+3. **Skonfiguruje bot** do używania self-hosted API
+4. **Fallback** do standard API jeśli self-hosted nie działa
 
-- **Logs**: Railway dashboard → Logs
-- **Metrics**: Railway dashboard → Metrics
-- **Health**: `/health` endpoint
-- **Uptime**: Railway monitoring
+## 💡 Alternatywa
 
-### 7. Troubleshooting
-
-#### Bot nie startuje:
-- Sprawdź zmienne środowiskowe
-- Sprawdź logs w Railway dashboard
-- Upewnij się że `TELEGRAM_BOT_TOKEN` jest poprawny
-
-#### Health check fails:
-- Sprawdź czy port 8000 jest dostępny
-- Sprawdź logs dla błędów HTTP server
-
-#### Video processing fails:
-- Sprawdź czy `ffmpeg` jest zainstalowany (jest w Dockerfile)
-- Sprawdź zmienne Yandex Disk
-
-### 8. Custom Domain (opcjonalnie)
-
-1. Railway dashboard → Settings → Domains
-2. Dodaj custom domain
-3. Skonfiguruj DNS records
-4. Bot będzie dostępny na twojej domenie
-
-### 9. Scaling
-
-Railway automatycznie skaluje aplikację w zależności od obciążenia. Dla większego ruchu:
-
-1. Railway dashboard → Settings → Scaling
-2. Ustaw min/max instances
-3. Skonfiguruj resource limits
-
-### 10. Backup
-
-Railway automatycznie tworzy backup:
-- **Code**: GitHub repository
-- **Environment**: Railway dashboard
-- **Data**: Yandex Disk (external storage)
-
-## 🎯 Gotowe!
-
-Bot jest teraz gotowy do deployment na Railway z pełną konfiguracją!
+Jeśli nie chcesz konfigurować self-hosted API:
+- Bot automatycznie skompresuje pliki >20MB
+- Użytkownicy dostaną instrukcje kompresji
+- Standardowy API będzie używany z fallback
