@@ -55,9 +55,12 @@ def check_self_hosted_api():
     """Check if self-hosted Bot API is available"""
     try:
         import requests
+        logger.info(f"🔍 Checking self-hosted API at: {SELF_HOSTED_API_URL}/health")
         response = requests.get(f"{SELF_HOSTED_API_URL}/health", timeout=5)
+        logger.info(f"   Response status: {response.status_code}")
         return response.status_code == 200
-    except:
+    except Exception as e:
+        logger.warning(f"⚠️ Self-hosted API check failed: {e}")
         return False
 
 def start_self_hosted_api_server():
@@ -108,9 +111,15 @@ def start_self_hosted_api_server():
                 ]
                 
                 logger.info("🚀 Starting self-hosted Bot API server...")
-                subprocess.run(server_args, check=True)
+                logger.info(f"   Binary: {telegram_bot_api_path}")
+                logger.info(f"   API ID: {api_id}")
+                logger.info(f"   Args: {' '.join(server_args)}")
+                
+                result = subprocess.run(server_args, check=True, capture_output=True, text=True)
+                logger.info(f"✅ Server started successfully: {result.stdout}")
             except Exception as e:
                 logger.error(f"❌ Failed to start self-hosted API server: {e}")
+                logger.error(f"   Error details: {str(e)}")
         
         # Start server in background thread
         server_thread = threading.Thread(target=run_server, daemon=True)
@@ -148,7 +157,14 @@ if USE_SELF_HOSTED_API:
         api_available = start_self_hosted_api_server()
         logger.info(f"   Server started: {api_available}")
     
-    if api_available:
+    # Force use self-hosted API for Railway deployment
+    if USE_SELF_HOSTED_API:
+        logger.info("🚀 FORCING self-hosted Bot API usage (Railway deployment)")
+        ACTUAL_API_URL = SELF_HOSTED_API_URL
+        ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
+        logger.info(f"   Using API URL: {ACTUAL_API_URL}")
+        logger.info(f"   Max file size: {ACTUAL_MAX_FILE_SIZE}MB")
+    elif api_available:
         logger.info("🚀 Self-hosted Bot API detected and available")
         ACTUAL_API_URL = SELF_HOSTED_API_URL
         ACTUAL_MAX_FILE_SIZE = MAX_FILE_SIZE_MB
@@ -161,9 +177,15 @@ else:
     ACTUAL_API_URL = "https://api.telegram.org"
     ACTUAL_MAX_FILE_SIZE = 20  # Standard API limit
 
-logger.info(f"🎯 Final configuration:")
-logger.info(f"   ACTUAL_API_URL: {ACTUAL_API_URL}")
-logger.info(f"   ACTUAL_MAX_FILE_SIZE: {ACTUAL_MAX_FILE_SIZE}MB")
+    logger.info(f"🎯 Final configuration:")
+    logger.info(f"   ACTUAL_API_URL: {ACTUAL_API_URL}")
+    logger.info(f"   ACTUAL_MAX_FILE_SIZE: {ACTUAL_MAX_FILE_SIZE}MB")
+    
+    # Verify configuration
+    if ACTUAL_MAX_FILE_SIZE > 20:
+        logger.info("✅ Self-hosted Bot API configured - files up to 2GB supported")
+    else:
+        logger.warning("⚠️ Using standard Telegram API - 20MB limit")
 
 # Состояния пользователей
 user_states = {}
@@ -1236,6 +1258,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             except Exception as e:
                 logger.error(f"❌ Błąd pobierania pliku: {e}")
                 if "File is too big" in str(e):
+                    logger.warning(f"⚠️ File too big for current API (limit: {ACTUAL_MAX_FILE_SIZE}MB)")
+                    logger.info(f"   Using API: {ACTUAL_API_URL}")
+                    logger.info(f"   File size: {user_states[user_id]['file_size'] / (1024*1024):.1f}MB")
+                if "File is too big" in str(e):
                     file_size_mb = user_states[user_id]['file_size'] / (1024*1024)
                     await query.message.edit_text(
                         f"⚠️ **Файл слишком большой для стандартного Telegram API!**\n\n"
@@ -1793,6 +1819,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             except Exception as e:
                 logger.error(f"❌ Błąd pobierania pliku: {e}")
                 if "File is too big" in str(e):
+                    logger.warning(f"⚠️ File too big for current API (limit: {ACTUAL_MAX_FILE_SIZE}MB)")
+                    logger.info(f"   Using API: {ACTUAL_API_URL}")
+                    logger.info(f"   File size: {user_states[user_id]['file_size'] / (1024*1024):.1f}MB")
+                if "File is too big" in str(e):
                     file_size_mb = user_states[user_id]['file_size'] / (1024*1024)
                     await query.message.edit_text(
                         f"⚠️ **Файл слишком большой для стандартного Telegram API!**\n\n"
@@ -1980,6 +2010,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 logger.info(f"✅ Plik pobrany pomyślnie: {file.file_path}")
             except Exception as e:
                 logger.error(f"❌ Błąd pobierania pliku: {e}")
+                if "File is too big" in str(e):
+                    logger.warning(f"⚠️ File too big for current API (limit: {ACTUAL_MAX_FILE_SIZE}MB)")
+                    logger.info(f"   Using API: {ACTUAL_API_URL}")
+                    logger.info(f"   File size: {user_states[user_id]['file_size'] / (1024*1024):.1f}MB")
                 if "File is too big" in str(e):
                     file_size_mb = user_states[user_id]['file_size'] / (1024*1024)
                     await query.message.edit_text(
