@@ -26,6 +26,11 @@ RUN mkdir -p temp_videos telegram_results generated_videos
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV OMP_NUM_THREADS=2
+ENV MKL_NUM_THREADS=2
+ENV OPENBLAS_NUM_THREADS=2
+ENV VECLIB_MAXIMUM_THREADS=2
+ENV NUMEXPR_NUM_THREADS=2
 
 # Expose port (Railway will set PORT env var)
 EXPOSE 8000

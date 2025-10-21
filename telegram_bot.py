@@ -2071,13 +2071,17 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     
                     # Проверяем размер сжатого файла
                     if compressed_size < 20 * 1024 * 1024:  # < 20MB
-                        # Загружаем сжатый файл обратно в Telegram
+                        # Загружаем сжатый файл обратно в Telegram с оптимизацией
                         with open(compressed_path, 'rb') as f:
                             message = await context.bot.send_document(
                                 chat_id=user_id,
                                 document=f,
                                 filename=f"compressed_{filename}",
-                                caption=f"📦 Автоматически сжатое видео\n📁 Размер: {compressed_size_mb:.1f} MB"
+                                caption=f"📦 Автоматически сжатое видео\n📁 Размер: {compressed_size_mb:.1f} MB",
+                                read_timeout=300,  # 5 минут timeout
+                                write_timeout=300,  # 5 минут timeout
+                                connect_timeout=60,  # 1 минута timeout
+                                pool_timeout=60  # 1 минута timeout
                             )
                         
                         logger.info(f"✅ Сжатый файл загружен: {message.document.file_id}")
@@ -2149,12 +2153,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             if compressed_size < 20 * 1024 * 1024:  # < 20MB
                                 # Загружаем сжатый файл обратно в Telegram
                                 with open(compressed_path, 'rb') as f:
-                                    # Отправляем как документ
+                                    # Отправляем как документ с оптимизацией
                                     message = await context.bot.send_document(
                                         chat_id=user_id,
                                         document=f,
                                         filename=f"compressed_{filename}",
-                                        caption="📦 Сжатое видео для обработки"
+                                        caption="📦 Сжатое видео для обработки",
+                                        read_timeout=300,  # 5 минут timeout
+                                        write_timeout=300,  # 5 минут timeout
+                                        connect_timeout=60,  # 1 минута timeout
+                                        pool_timeout=60  # 1 минута timeout
                                     )
                                 
                                 return {
@@ -2411,8 +2419,14 @@ def main():
     # Создаем бота
     bot = TelegramVideoBot()
     
-    # Создаем приложение
+    # Создаем приложение с оптимизацией для Railway
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    
+    # Оптимизация для Railway deployment
+    application.bot.request.timeout = 300  # 5 минут timeout
+    application.bot.request.connect_timeout = 60  # 1 минута connect timeout
+    application.bot.request.read_timeout = 300  # 5 минут read timeout
+    application.bot.request.write_timeout = 300  # 5 минут write timeout
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))
