@@ -87,7 +87,8 @@ def start_self_hosted_api_server():
             possible_paths = [
                 "/usr/local/bin/telegram-bot-api",
                 "/usr/bin/telegram-bot-api",
-                "./telegram-bot-api"
+                "./telegram-bot-api",
+                "./bot_api_server/telegram-bot-api"
             ]
             
             for path in possible_paths:
@@ -99,6 +100,12 @@ def start_self_hosted_api_server():
                 logger.warning("⚠️ telegram-bot-api binary not found, skipping self-hosted API")
                 return False
         
+        # Double check the binary still exists
+        if not (telegram_bot_api_path and os.path.exists(telegram_bot_api_path)):
+            logger.error(f"❌ telegram-bot-api binary not found at {telegram_bot_api_path}")
+            logger.info("   Install it or run docker-compose up telegram-bot-api before starting the bot.")
+            return False
+
         # Start Bot API server in background
         def run_server():
             try:
@@ -118,9 +125,15 @@ def start_self_hosted_api_server():
                 
                 result = subprocess.run(server_args, check=True, capture_output=True, text=True)
                 logger.info(f"✅ Server started successfully: {result.stdout}")
-            except Exception as e:
+            except subprocess.CalledProcessError as e:
                 logger.error(f"❌ Failed to start self-hosted API server: {e}")
-                logger.error(f"   Error details: {str(e)}")
+                logger.error(f"   Stdout: {e.stdout}")
+                logger.error(f"   Stderr: {e.stderr}")
+            except FileNotFoundError as e:
+                logger.error(f"❌ telegram-bot-api binary not found: {e}")
+                logger.info("   Ensure the binary is installed and accessible in PATH or /usr/local/bin.")
+            except Exception as e:
+                logger.error(f"❌ Failed to start self-hosted API server: {e}", exc_info=True)
         
         # Start server in background thread
         server_thread = threading.Thread(target=run_server, daemon=True)
