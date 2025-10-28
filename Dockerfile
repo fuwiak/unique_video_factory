@@ -1,6 +1,6 @@
 # Dockerfile for Railway deployment with conditional self-hosted API
 # Build argument to control self-hosted API installation
-ARG USE_SELF_HOSTED_API=false
+ARG USE_SELF_HOSTED_API=true
 
 # Multi-stage build for telegram-bot-api (only if needed)
 FROM ubuntu:22.04 AS telegram-bot-api-builder
