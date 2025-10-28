@@ -510,7 +510,7 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             welcome_text, 
-            parse_mode='Markdown'
+            
         )
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -555,7 +555,7 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             help_text,
-            parse_mode='Markdown'
+            
         )
     
     async def blogger_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -572,7 +572,7 @@ class TelegramVideoBot:
         await update.message.reply_text(
             "👤 *Создание карты блогера*\n\n"
             "Введите имя блогера (например: Лиза):",
-            parse_mode='Markdown'
+            
         )
     
     async def filters_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -585,7 +585,7 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             filters_text,
-            parse_mode='Markdown'
+            
         )
     
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -607,7 +607,7 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             status_text,
-            parse_mode='Markdown'
+            
         )
     
     async def manager_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -643,7 +643,7 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             manager_text,
-            parse_mode='Markdown'
+            
         )
     
     async def queue_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -651,7 +651,7 @@ class TelegramVideoBot:
         user_id = update.effective_user.id
         
         if not pending_approvals:
-            await update.message.reply_text("📋 *Очередь пуста*", parse_mode='Markdown')
+            await update.message.reply_text("📋 *Очередь пуста*", )
             return
         
         queue_text = "📋 *Очередь на аппрув:*\n\n"
@@ -664,7 +664,7 @@ class TelegramVideoBot:
                 queue_text += f"🎨 *Фильтр:* {video_data.get('filter', 'Неизвестно')}\n"
                 queue_text += f"⏰ *Время:* {video_data.get('timestamp', 'Неизвестно')}\n\n"
         
-        await update.message.reply_text(queue_text, parse_mode='Markdown')
+        await update.message.reply_text(queue_text, )
     
     async def approve_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда /approve - одобрить видео"""
@@ -706,7 +706,7 @@ class TelegramVideoBot:
         approved_videos = [v for v in pending_approvals.values() if v.get('status') == 'approved']
         
         if not approved_videos:
-            await update.message.reply_text("📋 *Нет одобренных видео*", parse_mode='Markdown')
+            await update.message.reply_text("📋 *Нет одобренных видео*", )
             return
         
         approved_text = "✅ *Одобренные видео:*\n\n"
@@ -719,7 +719,7 @@ class TelegramVideoBot:
             approved_text += f"⏰ *Одобрено:* {video_data.get('approved_at', 'Неизвестно')}\n"
             approved_text += f"👨‍💼 *Одобрил:* {video_data.get('approved_by', 'Неизвестно')}\n\n"
         
-        await update.message.reply_text(approved_text, parse_mode='Markdown')
+        await update.message.reply_text(approved_text, )
     
     async def reject_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Команда /reject - отклонить видео"""
@@ -873,7 +873,7 @@ class TelegramVideoBot:
                 "• Likee\n\n"
                 "Отправляйте по одной ссылке за раз.\n"
                 "Когда закончите, отправьте: **готово**",
-                parse_mode='Markdown'
+                
             )
             
         elif state['status'] == 'waiting_for_links':
@@ -887,7 +887,7 @@ class TelegramVideoBot:
                         f"✅ Добавлена ссылка: {text}\n\n"
                         f"Всего ссылок: {len(state['links'])}\n\n"
                         "Отправьте еще ссылку или напишите **готово** для завершения.",
-                        parse_mode='Markdown'
+                        
                     )
                 else:
                     await update.message.reply_text(
@@ -962,7 +962,7 @@ class TelegramVideoBot:
                             f"✅ **VK карта создана!**\n\n"
                             f"{stats_summary}\n"
                             "📋 Данные сохранены в Google Sheets.",
-                            parse_mode='Markdown'
+                            
                         )
                     else:
                         await update.message.reply_text(
@@ -1012,7 +1012,7 @@ class TelegramVideoBot:
         await update.message.reply_text(
             f"🔄 Обрабатываю ссылки для **{blogger_name}**...\n"
             f"Найдено ссылок: {len(links)}",
-            parse_mode='Markdown'
+            
         )
         
         try:
@@ -1113,7 +1113,7 @@ class TelegramVideoBot:
                     f"✅ **Карта блогера создана!**\n\n"
                     f"{stats_summary}\n\n"
                     "📋 Данные сохранены в Google Sheets.",
-                    parse_mode='Markdown'
+                    
                 )
             else:
                 await update.message.reply_text(
