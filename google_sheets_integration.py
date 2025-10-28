@@ -171,11 +171,16 @@ class GoogleSheetsIntegration:
     
     def format_data_for_sheets(self, data: Dict[str, Any]) -> List[List[str]]:
         """Formatuje dane dla Google Sheets - nowa struktura"""
+        logger.info(f"🔍 Formatuję dane dla Google Sheets: {data}")
         rows = []
         current_date = datetime.now().strftime('%Y-%m-%d')
         
         for platform, platform_data in data.items():
+            logger.info(f"📊 Przetwarzam platformę: {platform}")
+            logger.info(f"📋 Dane platformy: {platform_data}")
+            
             if 'error' in platform_data:
+                logger.warning(f"❌ Platforma {platform} ma błąd: {platform_data['error']}")
                 continue
             
             platform_name = platform_data.get('platform', platform)
@@ -185,10 +190,17 @@ class GoogleSheetsIntegration:
             has_clips_list = 'clips' in platform_data and isinstance(platform_data.get('clips'), list)
             has_videos_list = 'videos' in platform_data and isinstance(platform_data.get('videos'), list)
             has_shorts_list = 'shorts' in platform_data and isinstance(platform_data.get('shorts'), list)
+
+            logger.info(f"🔍 Sprawdzam strukturę danych:")
+            logger.info(f"  - has_clips_list: {has_clips_list}")
+            logger.info(f"  - has_videos_list: {has_videos_list}")
+            logger.info(f"  - has_shorts_list: {has_shorts_list}")
             
             if has_clips_list:
+                logger.info(f"📹 Przetwarzam VK clips: {len(platform_data['clips'])} clips")
                 # Przetwarzamy VK clips
-                for clip in platform_data['clips']:
+                for i, clip in enumerate(platform_data['clips']):
+                    logger.info(f"📹 Clip {i+1}: {clip}")
                     row = [
                         platform_data.get('url', ''),  # Видео (URL)
                         clip.get('date', current_date)[:10],  # Дата поста
@@ -196,6 +208,7 @@ class GoogleSheetsIntegration:
                         str(clip.get('views', 0)),     # Кол-во просмотров 1 нед (brak danych historycznych)
                         str(clip.get('views', 0))      # Кол-во просмотров 1 мес (brak danych historycznych)
                     ]
+                    logger.info(f"📝 Utworzono wiersz dla clip {i+1}: {row}")
                     rows.append(row)
             
             elif has_videos_list:
@@ -224,8 +237,10 @@ class GoogleSheetsIntegration:
             
             else:
                 # Brak danych do przetworzenia
-                logger.warning(f"Brak clips/videos/shorts dla {platform}")
+                logger.warning(f"⚠️ Brak clips/videos/shorts dla {platform}")
+                logger.info(f"🔍 Dostępne klucze: {list(platform_data.keys())}")
         
+        logger.info(f"📊 Łącznie utworzono {len(rows)} wierszy")
         return rows
     
     def get_or_create_blogger_sheet(self, blogger_name: str):
@@ -262,28 +277,42 @@ class GoogleSheetsIntegration:
     def save_to_blogger_sheet(self, blogger_name: str, data: Dict[str, Any]) -> bool:
         """Zapisuje dane do arkusza konkretnego blogera"""
         try:
+            logger.info(f"🔍 Rozpoczynam zapisywanie do arkusza '{blogger_name}'")
+            logger.info(f"📊 Dane do zapisania: {data}")
+            
             # Pobieramy lub tworzymy arkusz dla blogera
             sheet = self.get_or_create_blogger_sheet(blogger_name)
             if not sheet:
+                logger.error(f"❌ Nie można pobrać/utworzyć arkusza dla '{blogger_name}'")
                 return False
+            
+            logger.info(f"✅ Arkusz '{blogger_name}' gotowy")
             
             # Przygotowujemy dane
+            logger.info(f"📝 Formatuję dane dla arkusza...")
             rows = self.format_data_for_sheets(data)
+            logger.info(f"📊 Sformatowane wiersze: {rows}")
             
             if not rows:
-                logger.warning("Brak danych do zapisania")
+                logger.warning("⚠️ Brak danych do zapisania - format_data_for_sheets zwrócił pustą listę")
+                logger.info(f"🔍 Szczegóły danych: {data}")
                 return False
             
-            # Dodajemy dane do arkusza blogera
-            for row in rows:
-                sheet.append_row(row)
-                logger.info(f"Dodano wiersz do arkusza {blogger_name}: {row[:3]}...")
+            logger.info(f"✅ Znaleziono {len(rows)} wierszy do zapisania")
             
-            logger.info(f"Pomyślnie zapisano {len(rows)} wierszy do arkusza {blogger_name}")
+            # Dodajemy dane do arkusza blogera
+            for i, row in enumerate(rows):
+                logger.info(f"📝 Dodaję wiersz {i+1}: {row}")
+                sheet.append_row(row)
+                logger.info(f"✅ Dodano wiersz {i+1} do arkusza {blogger_name}")
+            
+            logger.info(f"🎉 Pomyślnie zapisano {len(rows)} wierszy do arkusza {blogger_name}")
             return True
             
         except Exception as e:
-            logger.error(f"Błąd zapisywania do arkusza {blogger_name}: {e}")
+            logger.error(f"❌ Błąd zapisywania do arkusza {blogger_name}: {e}")
+            import traceback
+            logger.error(f"📋 Traceback: {traceback.format_exc()}")
             return False
     
     def save_to_sheets(self, data: Dict[str, Any]) -> bool:
