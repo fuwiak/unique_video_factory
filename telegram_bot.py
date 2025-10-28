@@ -431,6 +431,7 @@ class TelegramVideoBot:
         
         # Google Sheets integration
         self.google_sheets = GoogleSheetsIntegration()
+        self.google_sheets.init_google_sheets()
         
         # Social stats checker
         self.social_stats_checker = AdvancedSocialStatsChecker()
@@ -812,13 +813,13 @@ class TelegramVideoBot:
         # Если еще не ввели имя блогера
         if user_states[user_id]['blogger_name'] is None:
             user_states[user_id]['blogger_name'] = text
-            await update.message.reply_text(
+                await update.message.reply_text(
                 f"✅ Имя блогера: **{text}**\n\n"
                 "📁 **Введите название папки:**\n"
                 "(например: clips, videos, content)"
-            )
-            return
-        
+                )
+                return
+            
         # Если еще не ввели название папки
         if user_states[user_id]['folder_name'] is None:
             user_states[user_id]['folder_name'] = text
@@ -882,19 +883,19 @@ class TelegramVideoBot:
             else:
                 # Проверяем, является ли ссылка валидной
                 if self.is_valid_social_link(text):
-                    state['links'].append(text)
-                    await update.message.reply_text(
+                state['links'].append(text)
+                await update.message.reply_text(
                         f"✅ Добавлена ссылка: {text}\n\n"
-                        f"Всего ссылок: {len(state['links'])}\n\n"
+                    f"Всего ссылок: {len(state['links'])}\n\n"
                         "Отправьте еще ссылку или напишите готово для завершения."
-                    )
-                else:
-                    await update.message.reply_text(
+                )
+            else:
+                await update.message.reply_text(
                         "❌ Неверная ссылка. Поддерживаемые платформы:\n"
-                        "• Instagram (instagram.com)\n"
-                        "• YouTube (youtube.com)\n"
-                        "• TikTok (tiktok.com)\n"
-                        "• VK (vk.com)\n"
+                    "• Instagram (instagram.com)\n"
+                    "• YouTube (youtube.com)\n"
+                    "• TikTok (tiktok.com)\n"
+                    "• VK (vk.com)\n"
                         "• Likee (likee.video)\n\n"
                         "Попробуйте еще раз или напишите **готово**."
                     )
@@ -909,7 +910,7 @@ class TelegramVideoBot:
                 # Tworzymy nowy URL z numerem ID
                 new_vk_url = f"https://vk.com/clips/user?owner={vk_id}"
                 
-                await update.message.reply_text(
+            await update.message.reply_text(
                     f"✅ VK ID: {vk_id}\n"
                     f"🔄 Обрабатываю VK статистику..."
                 )
@@ -923,7 +924,7 @@ class TelegramVideoBot:
                     
                     # Dodajemy dane blogera
                     for platform_name, data in stats_results.items():
-                        if 'error' not in data:
+                if 'error' not in data:
                             data['blogger_name'] = state['blogger_name']
                             data['user_name'] = state['blogger_name']
                             data['url'] = new_vk_url
@@ -939,8 +940,8 @@ class TelegramVideoBot:
                         return
                     
                     success = self.google_sheets.save_to_blogger_sheet(state['blogger_name'], stats_results)
-                    
-                    if success:
+            
+            if success:
                         # Podsumowanie
                         stats_summary = f"📊 **Статистика VK для {state['blogger_name']}:**\n\n"
                         
@@ -957,24 +958,24 @@ class TelegramVideoBot:
                             else:
                                 stats_summary += f"**{platform_name}:** ❌ Error\n\n"
                         
-                        await update.message.reply_text(
+                await update.message.reply_text(
                             f"✅ **VK карта создана!**\n\n"
                             f"{stats_summary}\n"
                             "📋 Данные сохранены в Google Sheets.",
-                            parse_mode='Markdown'
-                        )
-                    else:
-                        await update.message.reply_text(
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
                             "❌ Ошибка сохранения в Google Sheets.\n"
                             "Проверьте настройки Google Sheets."
-                        )
-                    
+                )
+                
                     # Oчищаем состояние
                     del blogger_states[user_id]
                     
-                except Exception as e:
+        except Exception as e:
                     logger.error(f"Ошибка обработки VK ID: {e}")
-                    await update.message.reply_text(
+            await update.message.reply_text(
                         f"❌ Ошибка обработки VK ID: {str(e)}"
                     )
                     # Oчищаем состояние
@@ -1043,7 +1044,7 @@ class TelegramVideoBot:
                             vk_id = self.social_stats_checker._extract_vk_user_id(url)
                             if not vk_id or not vk_id.isdigit():
                                 # Jeśli nie ma ID, pytamy użytkownika
-                                await update.message.reply_text(
+            await update.message.reply_text(
                                     f"🔍 Для VK нужен номер ID пользователя.\n"
                                     f"Найдите его в URL профиля: https://vk.com/id123456789\n"
                                     f"Или в параметре owner: https://vk.com/clips/username?owner=123456789\n\n"
@@ -1054,8 +1055,8 @@ class TelegramVideoBot:
                                 blogger_states[user_id]['status'] = 'waiting_for_vk_id'
                                 blogger_states[user_id]['vk_url'] = url
                                 blogger_states[user_id]['current_platform'] = platform
-                                return
-                            
+            return
+        
                             result = self.social_stats_checker.check_vk_stats(url)
                     elif platform.lower() == 'likee':
                         result = self.social_stats_checker.check_likee_stats(url)
@@ -1080,12 +1081,12 @@ class TelegramVideoBot:
             
             # Проверяем состояние Google Sheets
             if not self.google_sheets.sheet:
-                await update.message.reply_text(
+            await update.message.reply_text(
                     "❌ Google Sheets не настроен.\n"
                     "Проверьте файл google_credentials.json и настройки."
-                )
-                return
-            
+            )
+            return
+        
             success = self.google_sheets.save_to_blogger_sheet(blogger_name, stats_results)
             
             if success:
@@ -1107,8 +1108,8 @@ class TelegramVideoBot:
                         stats_summary += f"**{platform.title()}:** ❌ Ошибка\n\n"
                 
                 stats_summary += f"📈 **Общее количество подписчиков: {total_followers}**"
-                
-                await update.message.reply_text(
+            
+            await update.message.reply_text(
                     f"✅ **Карта блогера создана!**\n\n"
                     f"{stats_summary}\n\n"
                     "📋 Данные сохранены в Google Sheets.",
