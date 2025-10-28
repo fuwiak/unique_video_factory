@@ -74,7 +74,7 @@ ENV VECLIB_MAXIMUM_THREADS=2
 ENV NUMEXPR_NUM_THREADS=2
 
 # Self-hosted API flag (set to false to disable)
-ENV USE_SELF_HOSTED_API=true
+ENV USE_SELF_HOSTED_API=false
 
 # Expose ports (Railway will set PORT env var)
 EXPOSE 8000 8081 8082
