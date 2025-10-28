@@ -33,13 +33,73 @@ class GoogleSheetsIntegration:
         self.sheet = None
         
         # Inicjalizacja Google Sheets
-        self.init_google_sheets()
+        success = self.init_google_sheets()
+        if not success:
+            logger.warning("Google Sheets nie zostało zainicjalizowane - funkcje zapisu będą niedostępne")
+    
+    def _init_from_env(self):
+        """Inicjalizacja Google Sheets ze zmiennych środowiskowych"""
+        try:
+            # Sprawdzamy czy mamy wszystkie wymagane zmienne
+            required_vars = [
+                'GOOGLE_PROJECT_ID',
+                'GOOGLE_PRIVATE_KEY_ID', 
+                'GOOGLE_PRIVATE_KEY',
+                'GOOGLE_CLIENT_EMAIL',
+                'GOOGLE_CLIENT_ID'
+            ]
+            
+            for var in required_vars:
+                if not os.getenv(var):
+                    return False
+            
+            # Tworzymy credentials ze zmiennych środowiskowych
+            credentials_data = {
+                "type": "service_account",
+                "project_id": os.getenv('GOOGLE_PROJECT_ID'),
+                "private_key_id": os.getenv('GOOGLE_PRIVATE_KEY_ID'),
+                "private_key": os.getenv('GOOGLE_PRIVATE_KEY').replace('\\n', '\n'),
+                "client_email": os.getenv('GOOGLE_CLIENT_EMAIL'),
+                "client_id": os.getenv('GOOGLE_CLIENT_ID'),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{os.getenv('GOOGLE_CLIENT_EMAIL')}"
+            }
+            
+            # Zakres uprawnień
+            scope = [
+                'https://www.googleapis.com/auth/spreadsheets',
+                'https://www.googleapis.com/auth/drive'
+            ]
+            
+            # Ładujemy credentials
+            creds = Credentials.from_service_account_info(
+                credentials_data, 
+                scopes=scope
+            )
+            
+            # Łączymy się z Google Sheets
+            gc = gspread.authorize(creds)
+            self.sheet = gc.open_by_key(self.sheet_id).sheet1
+            
+            logger.info("Google Sheets połączone pomyślnie (ze zmiennych środowiskowych)")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Błąd inicjalizacji Google Sheets ze zmiennych środowiskowych: {e}")
+            return False
     
     def init_google_sheets(self):
         """Inicjalizacja Google Sheets"""
         try:
+            # Sprawdzamy czy mamy zmienne środowiskowe dla Google Sheets
+            if self._init_from_env():
+                return True
+            
+            # Sprawdzamy czy mamy plik credentials
             if not os.path.exists(self.credentials_file):
-                logger.error(f"Brak pliku {self.credentials_file}")
+                logger.error(f"Brak pliku {self.credentials_file} i zmiennych środowiskowych")
                 return False
             
             # Zakres uprawnień
@@ -63,6 +123,7 @@ class GoogleSheetsIntegration:
             
         except Exception as e:
             logger.error(f"Błąd inicjalizacji Google Sheets: {e}")
+            self.sheet = None
             return False
     
     def prepare_headers(self):
@@ -241,7 +302,7 @@ class GoogleSheetsIntegration:
         """Zapisuje dane do Google Sheets"""
         try:
             if not self.sheet:
-                logger.error("Google Sheets nie jest zainicjalizowane")
+                logger.error("Google Sheets nie jest zainicjalizowane - sprawdź plik google_credentials.json i uprawnienia")
                 return False
             
             # Przygotowujemy dane

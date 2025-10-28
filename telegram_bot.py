@@ -967,6 +967,15 @@ class TelegramVideoBot:
             
             # Сохраняем в Google Sheets
             await update.message.reply_text("💾 Сохраняю в Google Sheets...")
+            
+            # Проверяем состояние Google Sheets
+            if not self.google_sheets.sheet:
+                await update.message.reply_text(
+                    "❌ Google Sheets не настроен.\n"
+                    "Проверьте файл google_credentials.json и настройки."
+                )
+                return
+            
             success = self.google_sheets.save_to_sheets(stats_results)
             
             if success:
