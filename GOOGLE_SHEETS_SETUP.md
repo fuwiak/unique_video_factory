@@ -62,9 +62,9 @@
 
 W URL arkusza znajdź ID:
 ```
-https://docs.google.com/spreadsheets/d/1p6bQ3Ck7qMv8M6vobXQcnEjXXdECAoBOlmy2_n9sUPI/edit
+https://docs.google.com/spreadsheets/d/1dU9dv4R2-POC_VDlX7U4l_qkla23iZ4SxboLn66XXPw/edit?gid=0#gid=0
 ```
-ID to: `1p6bQ3Ck7qMv8M6vobXQcnEjXXdECAoBOlmy2_n9sUPI`
+ID to: `1dU9dv4R2-POC_VDlX7U4l_qkla23iZ4SxboLn66XXPw`
 
 ## 🧪 Test integracji
 
@@ -75,22 +75,18 @@ python google_sheets_integration.py
 
 ## 📊 Struktura danych w arkuszu
 
-System automatycznie utworzy kolumny:
+System automatycznie utworzy kolumny dla każdego blogera:
 
 | Kolumna | Opis |
 |---------|------|
-| Дата | Data i czas |
-| Платформа | Platforma (VK Clips, YouTube) |
-| Пользователь | Nazwa użytkownika |
-| Всего просмотров | Łączne wyświetlenia |
-| Количество видео | Liczba video/clips |
-| Просмотры вчера | Wyświetlenia z wczoraj |
-| Просмотры неделю назад | Wyświetlenia sprzed tygodnia |
-| Изменение за день (%) | Zmiana dzienna (%) |
-| Изменение за неделю (%) | Zmiana tygodniowa (%) |
-| Последнее видео | Tytuł ostatniego video |
-| Просмотры последнего | Wyświetlenia ostatniego video |
-| Дата последнего | Data ostatniego video |
+| Референс | Link do profilu/platformy |
+| Видео | Nazwa video/clip |
+| Дата поста | Data publikacji |
+| Кол-во просмотров 1 день | Wyświetlenia dzisiaj |
+| Кол-во просмотров 1 нед | Wyświetlenia z tygodnia |
+| Кол-во просмотров 1 мес | Wyświetlenia z miesiąca |
+
+**Każdy blogger ma swój własny arkusz** (np. "Лиза", "Рэйчел")
 
 ## 🔧 Rozwiązywanie problemów
 

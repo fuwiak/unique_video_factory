@@ -28,7 +28,7 @@ class GoogleSheetsIntegration:
     """Integracja z Google Sheets"""
     
     def __init__(self):
-        self.sheet_id = "1p6bQ3Ck7qMv8M6vobXQcnEjXXdECAoBOlmy2_n9sUPI"
+        self.sheet_id = "1dU9dv4R2-POC_VDlX7U4l_qkla23iZ4SxboLn66XXPw"
         self.credentials_file = "google_credentials.json"
         self.sheet = None
         self.gc = None  # Google Sheets client
@@ -128,22 +128,14 @@ class GoogleSheetsIntegration:
             return False
     
     def prepare_headers(self):
-        """Przygotowuje nagłówки kolumn"""
+        """Przygotowuje nagłówki kolumn"""
         headers = [
-            "Дата",
-            "Платформа", 
-            "Пользователь",
-            "Название видео",
-            "Просмотры сегодня",
-            "Просмотры вчера",
-            "Просмотры неделю назад",
-            "Изменение за день (%)",
-            "Изменение за неделю (%)",
-            "Дата публикации",
-            "Длительность",
-            "Лайки",
-            "Комментарии",
-            "Ссылка на видео"
+            "Референс",
+            "Видео", 
+            "Дата поста",
+            "Кол-во просмотров 1 день",
+            "Кол-во просмотров 1 нед",
+            "Кол-во просмотров 1 мес"
         ]
         return headers
     
@@ -179,9 +171,9 @@ class GoogleSheetsIntegration:
         return round(((current - previous) / previous) * 100, 2)
     
     def format_data_for_sheets(self, data: Dict[str, Any]) -> List[List[str]]:
-        """Formatuje dane dla Google Sheets - obsługuje różne struktury danych"""
+        """Formatuje dane dla Google Sheets - nowa struktura"""
         rows = []
-        current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        current_date = datetime.now().strftime('%Y-%m-%d')
         
         for platform, platform_data in data.items():
             if 'error' in platform_data:
@@ -190,151 +182,53 @@ class GoogleSheetsIntegration:
             platform_name = platform_data.get('platform', platform)
             user_name = platform_data.get('user_name', platform_data.get('username', ''))
             
-            # Sprawdzamy czy to struktura blogger cards (bez clips/videos/shorts jako listy)
+            # Sprawdzamy czy mamy clips/videos/shorts
             has_clips_list = 'clips' in platform_data and isinstance(platform_data.get('clips'), list)
             has_videos_list = 'videos' in platform_data and isinstance(platform_data.get('videos'), list)
             has_shorts_list = 'shorts' in platform_data and isinstance(platform_data.get('shorts'), list)
             
-            if not has_clips_list and not has_videos_list and not has_shorts_list:
-                # Struktura blogger cards - dane profilu
-                followers = platform_data.get('followers', 0)
-                
-                # Sprawdzamy czy videos to lista czy liczba
-                videos_data = platform_data.get('videos', 0)
-                if isinstance(videos_data, list):
-                    videos = len(videos_data)
-                else:
-                    videos = videos_data
-                
-                views = platform_data.get('views', platform_data.get('total_views', 0))
-                
-                # Dla VK używamy followers jako views (bo VK nie ma total_views)
-                if platform_name.lower() == 'vk' and not views:
-                    views = followers
-                
-                # Przygotowujemy wiersz dla profilu blogera
-                row = [
-                    current_date,
-                    platform_name,
-                    user_name,
-                    '',  # Nazwa clipa/video (puste dla profilu)
-                    str(views),  # Просмотры
-                    '0',  # Просмотры вчера (brak danych historycznych)
-                    '0',  # Просмотры неделю назад (brak danych historycznych)
-                    '0%',  # Изменение за день
-                    '0%',  # Изменение за неделю
-                    '',  # Дата публикации
-                    '',  # Длительность
-                    str(followers),  # Лайки (używamy followers)
-                    str(videos),  # Комментарии (używamy videos)
-                    platform_data.get('url', '')  # Ссылка na profil
-                ]
-                
-                rows.append(row)
-                continue
-            
-            # Przetwarzamy każdy clip/video osobno (oryginalna logika)
-            if 'clips' in platform_data and platform_data['clips']:
+            if has_clips_list:
+                # Przetwarzamy VK clips
                 for clip in platform_data['clips']:
-                    # Obliczamy historyczne wyświetlenia dla tego konkretnego clipa
-                    current_views = clip.get('views', 0)
-                    historical = self.calculate_historical_views(current_views, platform)
-                    
-                    # Obliczamy zmiany procentowe
-                    daily_change = self.calculate_percentage_change(
-                        current_views, historical['yesterday']
-                    )
-                    weekly_change = self.calculate_percentage_change(
-                        current_views, historical['week_ago']
-                    )
-                    
-                    # Przygotowujemy wiersz dla tego clipa
                     row = [
-                        current_date,
-                        platform_name,
-                        user_name,
-                        clip.get('title', '')[:100],  # Nazwa clipa
-                        str(current_views),  # Просмотры сегодня
-                        str(historical['yesterday']),  # Просмотры вчера
-                        str(historical['week_ago']),  # Просмотры неделю назад
-                        f"{daily_change}%",  # Изменение за день
-                        f"{weekly_change}%",  # Изменение за неделю
-                        clip.get('date', ''),  # Дата публикации
-                        f"{clip.get('duration', 0)} сек",  # Длительность
-                        str(clip.get('likes', 0)),  # Лайки
-                        str(clip.get('comments', 0)),  # Комментарии
-                        f"https://vk.com/video{clip.get('video_id', '')}"  # Ссылка
+                        platform_data.get('url', ''),  # Референс
+                        clip.get('title', '')[:100],    # Видео
+                        clip.get('date', current_date)[:10],  # Дата поста
+                        str(clip.get('views', 0)),     # Кол-во просмотров 1 день
+                        str(clip.get('views', 0)),     # Кол-во просмотров 1 нед (brak danych historycznych)
+                        str(clip.get('views', 0))      # Кол-во просмотров 1 мес (brak danych historycznych)
                     ]
-                    
                     rows.append(row)
             
-            elif 'videos' in platform_data and platform_data['videos']:
+            elif has_videos_list:
+                # Przetwarzamy YouTube videos
                 for video in platform_data['videos']:
-                    # Obliczamy historyczne wyświetlenia dla tego konkretnego wideo
-                    current_views = video.get('views', 0)
-                    historical = self.calculate_historical_views(current_views, platform)
-                    
-                    # Obliczamy zmiany procentowe
-                    daily_change = self.calculate_percentage_change(
-                        current_views, historical['yesterday']
-                    )
-                    weekly_change = self.calculate_percentage_change(
-                        current_views, historical['week_ago']
-                    )
-                    
-                    # Przygotowujemy wiersz dla tego wideo
                     row = [
-                        current_date,
-                        platform_name,
-                        user_name,
-                        video.get('title', '')[:100],  # Nazwa wideo
-                        str(current_views),  # Просмотры сегодня
-                        str(historical['yesterday']),  # Просмотры вчера
-                        str(historical['week_ago']),  # Просмотры неделю назад
-                        f"{daily_change}%",  # Изменение за день
-                        f"{weekly_change}%",  # Изменение за неделю
-                        video.get('date', '')[:10],  # Дата публикации
-                        video.get('duration', ''),  # Длительность
-                        str(video.get('likes', 0)),  # Лайки
-                        str(video.get('comments', 0)),  # Комментарии
-                        video.get('url', '')  # Ссылка на видео
+                        platform_data.get('url', ''),  # Референс
+                        video.get('title', '')[:100],  # Видео
+                        video.get('date', current_date)[:10],  # Дата поста
+                        str(video.get('views', 0)),    # Кол-во просмотров 1 день
+                        str(video.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
+                        str(video.get('views', 0))    # Кол-во просмотров 1 мес (brak danych historycznych)
                     ]
-                    
                     rows.append(row)
             
-            elif 'shorts' in platform_data and platform_data['shorts']:
+            elif has_shorts_list:
+                # Przetwarzamy YouTube shorts
                 for short in platform_data['shorts']:
-                    # Obliczamy historyczne wyświetlenia dla tego konkretnego shorta
-                    current_views = short.get('views', 0)
-                    historical = self.calculate_historical_views(current_views, platform)
-                    
-                    # Obliczamy zmiany procentowe
-                    daily_change = self.calculate_percentage_change(
-                        current_views, historical['yesterday']
-                    )
-                    weekly_change = self.calculate_percentage_change(
-                        current_views, historical['week_ago']
-                    )
-                    
-                    # Przygotowujemy wiersz dla tego shorta
                     row = [
-                        current_date,
-                        platform_name,
-                        user_name,
-                        short.get('title', '')[:100],  # Nazwa shorta
-                        str(current_views),  # Просмотры сегодня
-                        str(historical['yesterday']),  # Просмотры вчера
-                        str(historical['week_ago']),  # Просмотры неделю назад
-                        f"{daily_change}%",  # Изменение за день
-                        f"{weekly_change}%",  # Изменение за неделю
-                        short.get('published_at', '')[:10],  # Дата публикации
-                        f"{short.get('duration', '')}",  # Длительность
-                        str(short.get('likes', 0)),  # Лайки
-                        str(short.get('comments', 0)),  # Комментарии
-                        short.get('url', '')  # Ссылка на short
+                        platform_data.get('url', ''),  # Референс
+                        short.get('title', '')[:100],  # Видео
+                        short.get('published_at', current_date)[:10],  # Дата поста
+                        str(short.get('views', 0)),    # Кол-во просмотров 1 день
+                        str(short.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
+                        str(short.get('views', 0))    # Кол-во просмотров 1 мес (brak danych historycznych)
                     ]
-                    
                     rows.append(row)
+            
+            else:
+                # Brak danych do przetworzenia
+                logger.warning(f"Brak clips/videos/shorts dla {platform}")
         
         return rows
     

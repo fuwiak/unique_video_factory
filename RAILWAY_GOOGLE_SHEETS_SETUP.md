@@ -61,6 +61,8 @@ GOOGLE_CLIENT_ID=your-client-id
 - **GOOGLE_PRIVATE_KEY** musi mieć `\n` zamiast rzeczywistych nowych linii
 - Upewnij się, że konto serwisowe ma dostęp do Google Sheets
 - Udostępnij arkusz Google Sheets kontu serwisowemu (email z GOOGLE_CLIENT_EMAIL)
+- **Nowy arkusz**: `1dU9dv4R2-POC_VDlX7U4l_qkla23iZ4SxboLn66XXPw`
+- **Każdy blogger ma swój arkusz** (np. "Лиза", "Рэйчел")
 
 ### Testowanie:
 
