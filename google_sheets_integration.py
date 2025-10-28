@@ -202,6 +202,7 @@ class GoogleSheetsIntegration:
                 for i, clip in enumerate(platform_data['clips']):
                     logger.info(f"📹 Clip {i+1}: {clip}")
                     row = [
+                        '',  # Референс (zawsze pusty)
                         platform_data.get('url', ''),  # Видео (URL)
                         clip.get('date', current_date)[:10],  # Дата поста
                         str(clip.get('views', 0)),     # Кол-во просмотров 1 день
@@ -215,6 +216,7 @@ class GoogleSheetsIntegration:
                 # Przetwarzamy YouTube videos
                 for video in platform_data['videos']:
                     row = [
+                        '',  # Референс (zawsze pusty)
                         platform_data.get('url', ''),  # Видео (URL)
                         video.get('date', current_date)[:10],  # Дата поста
                         str(video.get('views', 0)),    # Кол-во просмотров 1 день
@@ -227,6 +229,7 @@ class GoogleSheetsIntegration:
                 # Przetwarzamy YouTube shorts
                 for short in platform_data['shorts']:
                     row = [
+                        '',  # Референс (zawsze pusty)
                         platform_data.get('url', ''),  # Видео (URL)
                         short.get('published_at', current_date)[:10],  # Дата поста
                         str(short.get('views', 0)),    # Кол-во просмотров 1 день
