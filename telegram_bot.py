@@ -1156,11 +1156,18 @@ class TelegramVideoBot:
     def convert_vk_to_clips_url(self, vk_url: str) -> str:
         """Конвертирует VK URL в clips URL"""
         try:
+            # Jeśli URL już zawiera /clips/, zwracamy go bez zmian
+            if '/clips/' in vk_url:
+                logger.info(f"✅ VK URL już zawiera /clips/, zwracam bez zmian: {vk_url}")
+                return vk_url
+            
             # Извлекаем username из URL
             # Пример: https://vk.com/lizaaaakorzh -> lizaaaakorzh
             if '/vk.com/' in vk_url:
                 username = vk_url.split('/vk.com/')[-1].split('?')[0].split('#')[0]
-                return f"https://vk.com/clips/{username}"
+                converted_url = f"https://vk.com/clips/{username}"
+                logger.info(f"🔄 Konwertuję VK URL: {vk_url} -> {converted_url}")
+                return converted_url
             return vk_url
         except Exception as e:
             logger.error(f"Ошибка конвертации VK URL: {e}")
