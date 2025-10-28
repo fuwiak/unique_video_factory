@@ -46,7 +46,7 @@ MAX_VIDEO_SIZE_MB = int(os.getenv('MAX_VIDEO_SIZE_MB', '300'))
 
 # Self-hosted Bot API configuration
 # Auto-enable self-hosted API for Railway deployment
-USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'true').lower() == 'true'  # Default to true for Railway
+USE_SELF_HOSTED_API = os.getenv('USE_SELF_HOSTED_API', 'false').lower() == 'true'  # Default to false for Railway
 SELF_HOSTED_API_URL = os.getenv('SELF_HOSTED_API_URL', 'http://localhost:8081').rstrip('/')
 SELF_HOSTED_BOT_API_URL = f"{SELF_HOSTED_API_URL}/bot"
 MAX_FILE_SIZE_MB = int(os.getenv('MAX_FILE_SIZE_MB', '2000'))  # 2GB for self-hosted
