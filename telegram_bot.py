@@ -1037,7 +1037,7 @@ class TelegramVideoBot:
                     elif platform.lower() == 'vk':
                         # Sprawdzamy czy to VK clip URL
                         if '/clips/' in url:
-                            result = self.social_stats_checker.extract_vk_clips_views(url)
+                            result = self.social_stats_checker.get_vk_clip_data(url)
                         else:
                             # Sprawdzamy czy można wyciągnąć ID z URL
                             vk_id = self.social_stats_checker._extract_vk_user_id(url)
