@@ -79,8 +79,7 @@ System automatycznie utworzy kolumny dla każdego blogera:
 
 | Kolumna | Opis |
 |---------|------|
-| Референс | Link do profilu/platformy |
-| Видео | Nazwa video/clip |
+| Видео | URL video/clip |
 | Дата поста | Data publikacji |
 | Кол-во просмотров 1 день | Wyświetlenia dzisiaj |
 | Кол-во просмотров 1 нед | Wyświetlenia z tygodnia |

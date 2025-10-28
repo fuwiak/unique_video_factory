@@ -130,7 +130,6 @@ class GoogleSheetsIntegration:
     def prepare_headers(self):
         """Przygotowuje nagłówki kolumn"""
         headers = [
-            "Референс",
             "Видео", 
             "Дата поста",
             "Кол-во просмотров 1 день",
@@ -191,8 +190,7 @@ class GoogleSheetsIntegration:
                 # Przetwarzamy VK clips
                 for clip in platform_data['clips']:
                     row = [
-                        platform_data.get('url', ''),  # Референс
-                        clip.get('title', '')[:100],    # Видео
+                        platform_data.get('url', ''),  # Видео (URL)
                         clip.get('date', current_date)[:10],  # Дата поста
                         str(clip.get('views', 0)),     # Кол-во просмотров 1 день
                         str(clip.get('views', 0)),     # Кол-во просмотров 1 нед (brak danych historycznych)
@@ -204,8 +202,7 @@ class GoogleSheetsIntegration:
                 # Przetwarzamy YouTube videos
                 for video in platform_data['videos']:
                     row = [
-                        platform_data.get('url', ''),  # Референс
-                        video.get('title', '')[:100],  # Видео
+                        platform_data.get('url', ''),  # Видео (URL)
                         video.get('date', current_date)[:10],  # Дата поста
                         str(video.get('views', 0)),    # Кол-во просмотров 1 день
                         str(video.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
@@ -217,8 +214,7 @@ class GoogleSheetsIntegration:
                 # Przetwarzamy YouTube shorts
                 for short in platform_data['shorts']:
                     row = [
-                        platform_data.get('url', ''),  # Референс
-                        short.get('title', '')[:100],  # Видео
+                        platform_data.get('url', ''),  # Видео (URL)
                         short.get('published_at', current_date)[:10],  # Дата поста
                         str(short.get('views', 0)),    # Кол-во просмотров 1 день
                         str(short.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)

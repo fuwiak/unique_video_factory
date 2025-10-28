@@ -79,3 +79,28 @@ Google Sheets nie jest zainicjalizowane
 ### Alternatywa - plik lokalny:
 
 Jeśli wolisz używać pliku lokalnie, skopiuj `google_credentials.json` do Railway (ale nie commituj go do git).
+
+## 📊 **Nowa Struktura Google Sheets**
+
+### **Kolumny:**
+| Kolumna | Opis |
+|---------|------|
+| Видео | URL video/clip |
+| Дата поста | Data publikacji |
+| Кол-во просмотров 1 день | Wyświetlenia dzisiaj |
+| Кол-во просмотров 1 нед | Wyświetlenia z tygodnia |
+| Кол-во просмотров 1 мес | Wyświetlenia z miesiąca |
+
+### **Przykład danych:**
+```
+Видео: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239128
+Дата поста: 2025-01-15
+Кол-во просмотров 1 день: 1500
+Кол-во просмотров 1 нед: 1500
+Кол-во просмотров 1 мес: 1500
+```
+
+### **Uwagi:**
+- **Brak kolumny "Референс"** - struktura jest prostsza
+- **Kolumna "Видео"** zawiera bezpośredni URL video
+- **Każdy blogger** ma swój własny arkusz
