@@ -54,13 +54,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy telegram-bot-api from builder stage (only if it exists)
 ARG USE_SELF_HOSTED_API
-RUN if [ "$USE_SELF_HOSTED_API" = "true" ]; then \
-        echo "📦 Copying telegram-bot-api..." && \
-        cp /usr/local/bin/telegram-bot-api /usr/local/bin/telegram-bot-api 2>/dev/null || \
-        echo "⚠️ telegram-bot-api not found, skipping..."; \
-    else \
-        echo "⚠️ Skipping telegram-bot-api copy (USE_SELF_HOSTED_API=false)"; \
-    fi
+COPY --from=telegram-bot-api-builder /usr/local/bin/telegram-bot-api /usr/local/bin/telegram-bot-api
 
 # Copy requirements first for better caching
 COPY requirements.txt .
