@@ -65,8 +65,21 @@ VK API:
 """
 
 def get_api_keys():
-    """Zwraca skonfigurowane API keys"""
-    return API_KEYS
+    """Zwraca skonfigurowane API keys z .env"""
+    import os
+    from dotenv import load_dotenv
+    
+    # Ładujemy zmienne środowiskowe
+    load_dotenv()
+    
+    # Zwracamy klucze z .env
+    return {
+        'youtube': os.getenv('YOUTUBE_API_KEY'),
+        'instagram': os.getenv('INSTAGRAM_ACCESS_TOKEN'),
+        'tiktok': os.getenv('TIKTOK_ACCESS_TOKEN'),
+        'vk': os.getenv('VK_ACCESS_TOKEN'),
+        'likee': os.getenv('LIKEE_ACCESS_TOKEN')
+    }
 
 def print_instructions():
     """Wyświetla instrukcje uzyskania API keys"""

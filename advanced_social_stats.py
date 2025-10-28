@@ -292,7 +292,7 @@ class AdvancedSocialStatsChecker:
         try:
             url = "https://www.googleapis.com/youtube/v3/videos"
             params = {
-                'part': 'statistics,contentDetails',
+                'part': 'snippet,statistics,contentDetails',
                 'id': video_id,
                 'key': api_key
             }
@@ -304,11 +304,15 @@ class AdvancedSocialStatsChecker:
                 return None
             
             item = data['items'][0]
-            stats = item['statistics']
-            duration = item['contentDetails']['duration']
+            snippet = item.get('snippet', {})
+            stats = item.get('statistics', {})
+            content_details = item.get('contentDetails', {})
             
             return {
-                'duration': duration,
+                'snippet': snippet,
+                'statistics': stats,
+                'contentDetails': content_details,
+                'duration': content_details.get('duration', ''),
                 'views': int(stats.get('viewCount', 0)),
                 'likes': int(stats.get('likeCount', 0)),
                 'comments': int(stats.get('commentCount', 0))
