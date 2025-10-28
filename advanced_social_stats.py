@@ -613,30 +613,46 @@ class AdvancedSocialStatsChecker:
     def get_vk_clip_data(self, clip_url: str) -> Dict[str, Any]:
         """Pobiera dane konkretnego VK clip z URL"""
         try:
+            logger.info(f"🎬 Pobieram dane VK clip z URL: {clip_url}")
+            
             # Wyciągamy video_id z URL
             video_id = self._extract_vk_video_id(clip_url)
             if not video_id:
+                logger.error(f"❌ Nie można wyciągnąć video ID z URL: {clip_url}")
                 return {'platform': 'VK', 'error': 'Nie można wyciągnąć video ID z URL'}
+            
+            logger.info(f"✅ Video ID: {video_id}")
             
             # Wyciągamy owner_id z URL
             owner_id = self._extract_vk_owner_id(clip_url)
             if not owner_id:
+                logger.error(f"❌ Nie można wyciągnąć owner ID z URL: {clip_url}")
                 return {'platform': 'VK', 'error': 'Nie można wyciągnąć owner ID z URL'}
+            
+            logger.info(f"✅ Owner ID: {owner_id}")
             
             # Pobieramy dane przez VK API
             if self.api_keys.get('vk'):
+                logger.info(f"🔑 VK API key dostępny, pobieram dane przez API")
                 clip_data = self._get_vk_clip_by_id(owner_id, video_id)
                 if clip_data:
+                    logger.info(f"✅ Pobrano dane przez VK API: {clip_data}")
                     return {
                         'platform': 'VK',
                         'url': clip_url,
                         'clips': [clip_data],
                         'method': 'VK API'
                     }
+                else:
+                    logger.warning(f"⚠️ Brak danych z VK API, próbuję scraping")
+            else:
+                logger.warning(f"⚠️ Brak VK API key, próbuję scraping")
             
             # Fallback - scraping
+            logger.info(f"🕷️ Próbuję scraping dla URL: {clip_url}")
             clip_data = self._get_vk_clip_scraping(clip_url)
             if clip_data:
+                logger.info(f"✅ Pobrano dane przez scraping: {clip_data}")
                 return {
                     'platform': 'VK',
                     'url': clip_url,
@@ -644,10 +660,11 @@ class AdvancedSocialStatsChecker:
                     'method': 'Scraping'
                 }
             
+            logger.error(f"❌ Nie można pobrać danych clip z URL: {clip_url}")
             return {'platform': 'VK', 'error': 'Nie można pobrać danych clip'}
-            
+
         except Exception as e:
-            logger.error(f"Błąd pobierania VK clip: {e}")
+            logger.error(f"❌ Błąd pobierania VK clip: {e}")
             return {'platform': 'VK', 'error': str(e)}
     
     def _get_vk_clips(self, user_id: str, profile_url: str) -> Optional[Dict[str, Any]]:
@@ -1038,32 +1055,46 @@ class AdvancedSocialStatsChecker:
     
     def _extract_vk_video_id(self, url: str) -> Optional[str]:
         """Wyciąganie video ID z URL VK clip"""
+        logger.info(f"🔍 Wyciągam video ID z URL: {url}")
+        
         # Format: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239129
         # Szukamy clip{owner_id}_{video_id}
         clip_match = re.search(r'clip(\d+)_(\d+)', url)
         if clip_match:
-            return clip_match.group(2)  # video_id
+            video_id = clip_match.group(2)  # video_id
+            logger.info(f"✅ Znaleziono video ID przez clip_match: {video_id}")
+            return video_id
         
         # Alternatywnie szukamy w parametrze z
         z_match = re.search(r'z=clip\d+_(\d+)', url)
         if z_match:
-            return z_match.group(1)
+            video_id = z_match.group(1)
+            logger.info(f"✅ Znaleziono video ID przez z_match: {video_id}")
+            return video_id
         
+        logger.warning(f"❌ Nie można wyciągnąć video ID z URL: {url}")
         return None
     
     def _extract_vk_owner_id(self, url: str) -> Optional[str]:
         """Wyciąganie owner ID z URL VK clip"""
+        logger.info(f"🔍 Wyciągam owner ID z URL: {url}")
+        
         # Format: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239129
         # Szukamy owner=123456
         owner_match = re.search(r'owner=(\d+)', url)
         if owner_match:
-            return owner_match.group(1)
+            owner_id = owner_match.group(1)
+            logger.info(f"✅ Znaleziono owner ID przez owner_match: {owner_id}")
+            return owner_id
         
         # Alternatywnie z clip{owner_id}_{video_id}
         clip_match = re.search(r'clip(\d+)_\d+', url)
         if clip_match:
-            return clip_match.group(1)
+            owner_id = clip_match.group(1)
+            logger.info(f"✅ Znaleziono owner ID przez clip_match: {owner_id}")
+            return owner_id
         
+        logger.warning(f"❌ Nie można wyciągnąć owner ID z URL: {url}")
         return None
     
     def check_likee_stats(self, profile_url: str) -> Dict[str, Any]:
