@@ -520,6 +520,12 @@ class AdvancedSocialStatsChecker:
     def _vk_scraping_stats(self, url: str) -> Optional[Dict[str, Any]]:
         """Scraping VK z różnych źródeł"""
         try:
+            # Jeśli to clips URL, konwertujemy na profil URL
+            if '/clips/' in url:
+                username = self._extract_vk_user_id(url)
+                if username:
+                    url = f"https://vk.com/{username}"
+            
             response = self._make_request(url)
             if not response:
                 return None
@@ -554,8 +560,19 @@ class AdvancedSocialStatsChecker:
     
     def _extract_vk_user_id(self, url: str) -> Optional[str]:
         """Wyciąganie user ID z URL VK"""
-        match = re.search(r'vk\.com/([^/?]+)', url)
-        return match.group(1) if match else None
+        # Obsługujemy różne formaty URL VK
+        patterns = [
+            r'vk\.com/clips/([^/?]+)',  # https://vk.com/clips/username
+            r'vk\.com/([^/?]+)',        # https://vk.com/username
+            r'vk\.com/id(\d+)',         # https://vk.com/id123456
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
+        return None
     
     def check_likee_stats(self, profile_url: str) -> Dict[str, Any]:
         """Sprawdzanie statystyk Likee"""

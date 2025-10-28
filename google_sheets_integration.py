@@ -208,6 +208,10 @@ class GoogleSheetsIntegration:
                 
                 views = platform_data.get('views', platform_data.get('total_views', 0))
                 
+                # Dla VK używamy followers jako views (bo VK nie ma total_views)
+                if platform_name.lower() == 'vk' and not views:
+                    views = followers
+                
                 # Przygotowujemy wiersz dla profilu blogera
                 row = [
                     current_date,
