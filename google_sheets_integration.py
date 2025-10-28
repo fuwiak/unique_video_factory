@@ -117,7 +117,7 @@ class GoogleSheetsIntegration:
         return round(((current - previous) / previous) * 100, 2)
     
     def format_data_for_sheets(self, data: Dict[str, Any]) -> List[List[str]]:
-        """Formatuje dane dla Google Sheets - każdy clip/video ma swój wiersz"""
+        """Formatuje dane dla Google Sheets - obsługuje różne struktury danych"""
         rows = []
         current_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
@@ -128,7 +128,45 @@ class GoogleSheetsIntegration:
             platform_name = platform_data.get('platform', platform)
             user_name = platform_data.get('user_name', platform_data.get('username', ''))
             
-            # Przetwarzamy każdy clip/video osobno
+            # Sprawdzamy czy to struktura blogger cards (bez clips/videos jako listy)
+            has_clips_list = 'clips' in platform_data and isinstance(platform_data.get('clips'), list)
+            has_videos_list = 'videos' in platform_data and isinstance(platform_data.get('videos'), list)
+            
+            if not has_clips_list and not has_videos_list:
+                # Struktura blogger cards - dane profilu
+                followers = platform_data.get('followers', 0)
+                
+                # Sprawdzamy czy videos to lista czy liczba
+                videos_data = platform_data.get('videos', 0)
+                if isinstance(videos_data, list):
+                    videos = len(videos_data)
+                else:
+                    videos = videos_data
+                
+                views = platform_data.get('views', platform_data.get('total_views', 0))
+                
+                # Przygotowujemy wiersz dla profilu blogera
+                row = [
+                    current_date,
+                    platform_name,
+                    user_name,
+                    '',  # Nazwa clipa/video (puste dla profilu)
+                    str(views),  # Просмотры
+                    '0',  # Просмотры вчера (brak danych historycznych)
+                    '0',  # Просмотры неделю назад (brak danych historycznych)
+                    '0%',  # Изменение за день
+                    '0%',  # Изменение за неделю
+                    '',  # Дата публикации
+                    '',  # Длительность
+                    str(followers),  # Лайки (używamy followers)
+                    str(videos),  # Комментарии (używamy videos)
+                    platform_data.get('url', '')  # Ссылка na profil
+                ]
+                
+                rows.append(row)
+                continue
+            
+            # Przetwarzamy każdy clip/video osobno (oryginalna logika)
             if 'clips' in platform_data and platform_data['clips']:
                 for clip in platform_data['clips']:
                     # Obliczamy historyczne wyświetlenia dla tego konkretnego clipa

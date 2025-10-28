@@ -958,11 +958,12 @@ class TelegramVideoBot:
                     logger.error(f"Ошибка сбора статистики для {platform}: {e}")
                     stats_results[platform] = {'platform': platform, 'error': str(e)}
             
-            # Добавляем имя блогера к результатам
+            # Добавляем имя блогера и URL к результатам
             for platform, data in stats_results.items():
                 if 'error' not in data:
                     data['blogger_name'] = blogger_name
                     data['user_name'] = blogger_name
+                    data['url'] = platform_urls.get(platform, '')
             
             # Сохраняем в Google Sheets
             await update.message.reply_text("💾 Сохраняю в Google Sheets...")
