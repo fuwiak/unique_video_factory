@@ -899,6 +899,92 @@ class TelegramVideoBot:
                         "• Likee (likee.video)\n\n"
                         "Попробуйте еще раз или напишите **готово**."
                     )
+        
+        elif state['status'] == 'waiting_for_vk_id':
+            # Sprawdzamy czy to numer ID
+            if text.isdigit():
+                vk_id = text
+                vk_url = state['vk_url']
+                platform = state['current_platform']
+                
+                # Tworzymy nowy URL z numerem ID
+                new_vk_url = f"https://vk.com/clips/user?owner={vk_id}"
+                
+                await update.message.reply_text(
+                    f"✅ VK ID: {vk_id}\n"
+                    f"🔄 Обрабатываю VK статистику..."
+                )
+                
+                try:
+                    # Pobieramy statystyki VK z numerem ID
+                    result = self.social_stats_checker.check_vk_stats(new_vk_url)
+                    
+                    # Dodajemy do wyników
+                    stats_results = {platform: result}
+                    
+                    # Dodajemy dane blogera
+                    for platform_name, data in stats_results.items():
+                        if 'error' not in data:
+                            data['blogger_name'] = state['blogger_name']
+                            data['user_name'] = state['blogger_name']
+                            data['url'] = new_vk_url
+                    
+                    # Zapisujemy do Google Sheets
+                    await update.message.reply_text("💾 Сохраняю в Google Sheets...")
+                    
+                    if not self.google_sheets.sheet:
+                        await update.message.reply_text(
+                            "❌ Google Sheets не настроен.\n"
+                            "Проверьте файл google_credentials.json i настройки."
+                        )
+                        return
+                    
+                    success = self.google_sheets.save_to_blogger_sheet(state['blogger_name'], stats_results)
+                    
+                    if success:
+                        # Podsumowanie
+                        stats_summary = f"📊 **Статистика VK для {state['blogger_name']}:**\n\n"
+                        
+                        for platform_name, data in stats_results.items():
+                            if 'error' not in data:
+                                if 'clips' in data:
+                                    clips_count = len(data['clips'])
+                                    total_views = sum(clip.get('views', 0) for clip in data['clips'])
+                                    stats_summary += f"**{platform_name}:**\n"
+                                    stats_summary += f"• Clips: {clips_count}\n"
+                                    stats_summary += f"• Total views: {total_views:,}\n\n"
+                                else:
+                                    stats_summary += f"**{platform_name}:** ❌ No clips found\n\n"
+                            else:
+                                stats_summary += f"**{platform_name}:** ❌ Error\n\n"
+                        
+                        await update.message.reply_text(
+                            f"✅ **VK карта создана!**\n\n"
+                            f"{stats_summary}\n"
+                            "📋 Данные сохранены в Google Sheets.",
+                            parse_mode='Markdown'
+                        )
+                    else:
+                        await update.message.reply_text(
+                            "❌ Ошибка сохранения в Google Sheets.\n"
+                            "Проверьте настройки Google Sheets."
+                        )
+                    
+                    # Oчищаем состояние
+                    del blogger_states[user_id]
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка обработки VK ID: {e}")
+                    await update.message.reply_text(
+                        f"❌ Ошибка обработки VK ID: {str(e)}"
+                    )
+                    # Oчищаем состояние
+                    del blogger_states[user_id]
+            else:
+                await update.message.reply_text(
+                    "❌ Неверный формат ID. Введите только цифры.\n"
+                    "Пример: 1072165347"
+                )
 
     def is_valid_social_link(self, link: str) -> bool:
         """Проверяет, является ли ссылка валидной социальной сетью"""
@@ -946,6 +1032,23 @@ class TelegramVideoBot:
                     elif platform.lower() == 'tiktok':
                         result = self.social_stats_checker.check_tiktok_stats(url)
                     elif platform.lower() == 'vk':
+                        # Sprawdzamy czy można wyciągnąć ID z URL
+                        vk_id = self.social_stats_checker._extract_vk_user_id(url)
+                        if not vk_id or not vk_id.isdigit():
+                            # Jeśli nie ma ID, pytamy użytkownika
+                            await update.message.reply_text(
+                                f"🔍 Для VK нужен номер ID пользователя.\n"
+                                f"Найдите его в URL профиля: https://vk.com/id123456789\n"
+                                f"Или в параметре owner: https://vk.com/clips/username?owner=123456789\n\n"
+                                f"Введите номер ID для VK:"
+                            )
+                            
+                            # Zmieniamy stan na oczekiwanie VK ID
+                            blogger_states[user_id]['status'] = 'waiting_for_vk_id'
+                            blogger_states[user_id]['vk_url'] = url
+                            blogger_states[user_id]['current_platform'] = platform
+                            return
+                        
                         result = self.social_stats_checker.check_vk_stats(url)
                     elif platform.lower() == 'likee':
                         result = self.social_stats_checker.check_likee_stats(url)

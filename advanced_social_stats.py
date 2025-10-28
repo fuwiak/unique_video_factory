@@ -467,28 +467,223 @@ class AdvancedSocialStatsChecker:
         return match.group(1) if match else None
     
     def check_vk_stats(self, profile_url: str) -> Dict[str, Any]:
-        """Sprawdzanie statystyk VK z wieloma metodami"""
+        """Sprawdzanie statystyk VK - pobiera ostatnie 5 clipsów"""
         try:
             user_id = self._extract_vk_user_id(profile_url)
             if not user_id:
                 return {'platform': 'VK', 'error': 'Nie można wyciągnąć user ID'}
             
-            # Metoda 1: VK API
-            if self.api_keys.get('vk'):
-                api_result = self._vk_api_stats(user_id)
-                if api_result and 'error' not in api_result:
-                    return api_result
+            # Pobieramy ostatnie clipsy
+            clips_result = self._get_vk_clips(user_id, profile_url)
+            if clips_result and 'error' not in clips_result:
+                return clips_result
             
-            # Metoda 2: Scraping z różnych źródeł
-            scraping_result = self._vk_scraping_stats(profile_url)
-            if scraping_result and 'error' not in scraping_result:
-                return scraping_result
-            
-            return {'platform': 'VK', 'error': 'Wszystkie metody nieudane'}
+            return {'platform': 'VK', 'error': 'Nie można pobrać clipsów'}
             
         except Exception as e:
             logger.error(f"Błąd VK: {e}")
             return {'platform': 'VK', 'error': str(e)}
+    
+    def _get_vk_clips(self, user_id: str, profile_url: str) -> Optional[Dict[str, Any]]:
+        """Pobiera ostatnie 5 clipsów z VK"""
+        try:
+            # Metoda 1: VK API (jeśli dostępne)
+            if self.api_keys.get('vk'):
+                api_clips = self._get_vk_clips_api(user_id)
+                if api_clips:
+                    return {
+                        'platform': 'VK',
+                        'clips': api_clips,
+                        'method': 'VK API'
+                    }
+            
+            # Metoda 2: Scraping (fallback)
+            scraping_clips = self._get_vk_clips_scraping(user_id, profile_url)
+            if scraping_clips:
+                return {
+                    'platform': 'VK',
+                    'clips': scraping_clips,
+                    'method': 'Scraping'
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania VK clipsów: {e}")
+            return None
+    
+    def _get_vk_clips_api(self, user_id: str) -> Optional[List[Dict[str, Any]]]:
+        """Pobiera clipsy przez VK API"""
+        try:
+            access_token = self.api_keys['vk']
+            
+            # Pobieramy ostatnie filmy użytkownika
+            url = "https://api.vk.com/method/video.get"
+            params = {
+                'owner_id': user_id,
+                'count': 20,  # Pobieramy więcej żeby znaleźć clipsy
+                'sort': 2,    # Sortowanie według daty
+                'access_token': access_token,
+                'v': '5.131'
+            }
+            
+            response = self.session.get(url, params=params, timeout=10)
+            data = response.json()
+            
+            if 'response' not in data or 'items' not in data['response']:
+                return None
+            
+            clips = []
+            for video in data['response']['items']:
+                # Sprawdzamy czy to clip (krótki film)
+                duration = video.get('duration', 0)
+                if duration <= 60:  # Clipsy są krótsze niż 60 sekund
+                    clips.append({
+                        'title': video.get('title', ''),
+                        'video_id': video.get('id', ''),
+                        'views': video.get('views', 0),
+                        'likes': video.get('likes', 0),
+                        'comments': video.get('comments', 0),
+                        'date': video.get('date', ''),
+                        'duration': duration,
+                        'url': f"https://vk.com/video{video.get('owner_id', '')}_{video.get('id', '')}"
+                    })
+                    
+                    if len(clips) >= 5:  # Ostatnie 5 clipsów
+                        break
+            
+            return clips
+            
+        except Exception as e:
+            logger.error(f"Błąd VK API clipsów: {e}")
+            return None
+    
+    def _get_vk_clips_scraping(self, user_id: str, profile_url: str) -> Optional[List[Dict[str, Any]]]:
+        """Pobiera clipsy przez scraping (fallback)"""
+        try:
+            # Sprawdzamy czy user_id to numer (ID użytkownika)
+            if user_id.isdigit():
+                # Jeśli mamy numer ID, próbujemy VK API
+                if self.api_keys.get('vk'):
+                    return self._get_vk_clips_api(user_id)
+                else:
+                    logger.warning(f"Brak VK API key, nie można pobrać clipsów dla ID {user_id}")
+                    return None
+            
+            # Jeśli to username, próbujemy scraping
+            # Konwertujemy clips URL na profil URL jeśli potrzeba
+            if '/clips/' in profile_url:
+                username = self._extract_vk_user_id(profile_url)
+                if username:
+                    profile_url = f"https://vk.com/{username}"
+            
+            # Pobieramy stronę profilu
+            response = self._make_request(profile_url)
+            if not response:
+                logger.warning(f"Nie można pobrać danych VK dla {user_id}")
+                return None
+            
+            content = response.text
+            
+            # Szukamy clipsów w HTML
+            clips = self._extract_vk_clips_from_html(content, user_id)
+            
+            return clips[:5] if clips else None
+            
+        except Exception as e:
+            logger.error(f"Błąd VK scraping clipsów: {e}")
+            return None
+    
+    def _create_mock_vk_clips(self, user_id: str) -> List[Dict[str, Any]]:
+        """Tworzy mock data dla VK clipsów"""
+        import time
+        current_time = int(time.time())
+        
+        mock_clips = []
+        for i in range(5):
+            clip_id = f"{user_id}_{i+1}"
+            mock_clips.append({
+                'title': f'VK Clip {i+1} - {user_id}',
+                'video_id': clip_id,
+                'views': 1000 + (i * 200),  # Różne liczby wyświetleń
+                'likes': 50 + (i * 10),
+                'comments': 10 + i,
+                'date': current_time - (i * 86400),  # Ostatnie 5 dni
+                'duration': 30 + (i * 5),  # 30-50 sekund
+                'url': f"https://vk.com/video{user_id}_{clip_id}"
+            })
+        
+        return mock_clips
+    
+    def _extract_vk_clips_from_html(self, html_content: str, user_id: str) -> List[Dict[str, Any]]:
+        """Wyciąga clipsy z HTML VK"""
+        try:
+            clips = []
+            
+            # Szukamy clipsów w różnych formatach JSON
+            import re
+            import json
+            
+            # Pattern 1: Szukamy w window.vkData
+            vk_data_pattern = r'window\.vkData\s*=\s*({.*?});'
+            vk_data_match = re.search(vk_data_pattern, html_content, re.DOTALL)
+            
+            if vk_data_match:
+                try:
+                    vk_data = json.loads(vk_data_match.group(1))
+                    clips.extend(self._parse_vk_data_clips(vk_data))
+                except json.JSONDecodeError:
+                    pass
+            
+            # Pattern 2: Szukamy w innych miejscach
+            clips_pattern = r'"video":\s*({[^}]+})'
+            clips_matches = re.findall(clips_pattern, html_content)
+            
+            for clip_match in clips_matches:
+                try:
+                    clip_data = json.loads(clip_match)
+                    if self._is_valid_vk_clip(clip_data):
+                        clips.append(self._format_vk_clip(clip_data))
+                except json.JSONDecodeError:
+                    continue
+            
+            # Ograniczamy do 5 clipsów
+            return clips[:5]
+            
+        except Exception as e:
+            logger.error(f"Błąd wyciągania VK clipsów: {e}")
+            return []
+    
+    def _parse_vk_data_clips(self, vk_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Parsuje clipsy z vkData"""
+        clips = []
+        
+        # Szukamy w różnych miejscach vkData
+        for key, value in vk_data.items():
+            if isinstance(value, list):
+                for item in value:
+                    if isinstance(item, dict) and self._is_valid_vk_clip(item):
+                        clips.append(self._format_vk_clip(item))
+        
+        return clips
+    
+    def _is_valid_vk_clip(self, clip_data: Dict[str, Any]) -> bool:
+        """Sprawdza czy to jest prawidłowy VK clip"""
+        required_fields = ['id', 'title', 'views']
+        return all(field in clip_data for field in required_fields)
+    
+    def _format_vk_clip(self, clip_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Formatuje dane VK clip"""
+        return {
+            'title': clip_data.get('title', ''),
+            'video_id': clip_data.get('id', ''),
+            'views': clip_data.get('views', 0),
+            'likes': clip_data.get('likes', 0),
+            'comments': clip_data.get('comments', 0),
+            'date': clip_data.get('date', ''),
+            'duration': clip_data.get('duration', 0),
+            'url': f"https://vk.com/video{clip_data.get('id', '')}"
+        }
     
     def _vk_api_stats(self, user_id: str) -> Optional[Dict[str, Any]]:
         """VK API"""
@@ -560,11 +755,16 @@ class AdvancedSocialStatsChecker:
     
     def _extract_vk_user_id(self, url: str) -> Optional[str]:
         """Wyciąganie user ID z URL VK"""
+        # Sprawdzamy czy w URL jest parametr owner (numer ID)
+        owner_match = re.search(r'owner=(\d+)', url)
+        if owner_match:
+            return owner_match.group(1)
+        
         # Obsługujemy różne formaty URL VK
         patterns = [
             r'vk\.com/clips/([^/?]+)',  # https://vk.com/clips/username
-            r'vk\.com/([^/?]+)',        # https://vk.com/username
             r'vk\.com/id(\d+)',         # https://vk.com/id123456
+            r'vk\.com/([^/?]+)',        # https://vk.com/username
         ]
         
         for pattern in patterns:
