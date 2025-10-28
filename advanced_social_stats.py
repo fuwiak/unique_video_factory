@@ -631,7 +631,7 @@ class AdvancedSocialStatsChecker:
             
             logger.info(f"✅ Owner ID: {owner_id}")
             
-            # Pobieramy dane przez VK API
+            # Pobieramy dane TYLKO przez VK API
             if self.api_keys.get('vk'):
                 logger.info(f"🔑 VK API key dostępny, pobieram dane przez API")
                 clip_data = self._get_vk_clip_by_id(owner_id, video_id)
@@ -644,24 +644,11 @@ class AdvancedSocialStatsChecker:
                         'method': 'VK API'
                     }
                 else:
-                    logger.warning(f"⚠️ Brak danych z VK API, próbuję scraping")
+                    logger.error(f"❌ Brak danych z VK API")
+                    return {'platform': 'VK', 'error': 'VK API nie zwrócił danych'}
             else:
-                logger.warning(f"⚠️ Brak VK API key, próbuję scraping")
-            
-            # Fallback - scraping
-            logger.info(f"🕷️ Próbuję scraping dla URL: {clip_url}")
-            clip_data = self._get_vk_clip_scraping(clip_url)
-            if clip_data:
-                logger.info(f"✅ Pobrano dane przez scraping: {clip_data}")
-                return {
-                    'platform': 'VK',
-                    'url': clip_url,
-                    'clips': [clip_data],
-                    'method': 'Scraping'
-                }
-            
-            logger.error(f"❌ Nie można pobrać danych clip z URL: {clip_url}")
-            return {'platform': 'VK', 'error': 'Nie można pobrać danych clip'}
+                logger.error(f"❌ Brak VK API key")
+                return {'platform': 'VK', 'error': 'Brak VK API key'}
 
         except Exception as e:
             logger.error(f"❌ Błąd pobierania VK clip: {e}")
@@ -846,64 +833,6 @@ class AdvancedSocialStatsChecker:
             
         except Exception as e:
             logger.error(f"Błąd VK scraping clipsów: {e}")
-            return None
-    
-    def _get_vk_clip_scraping(self, clip_url: str) -> Optional[Dict[str, Any]]:
-        """Pobiera konkretny VK clip przez scraping"""
-        try:
-            response = self._make_request(clip_url)
-            if not response:
-                logger.warning(f"Nie można pobrać VK clip z {clip_url}")
-                return None
-            
-            content = response.text
-            
-            # Szukamy danych clip w HTML
-            # VK często ma dane w JSON w script tagach
-            import json
-            
-            # Szukamy window.vkData lub podobnych struktur
-            vk_data_match = re.search(r'window\.vkData\s*=\s*({.*?});', content, re.DOTALL)
-            if vk_data_match:
-                try:
-                    vk_data = json.loads(vk_data_match.group(1))
-                    # Próbujemy wyciągnąć dane video
-                    if 'video' in vk_data:
-                        video_data = vk_data['video']
-                        return {
-                            'title': video_data.get('title', ''),
-                            'video_id': video_data.get('id', ''),
-                            'views': video_data.get('views', 0),
-                            'likes': video_data.get('likes', 0),
-                            'comments': video_data.get('comments', 0),
-                            'date': video_data.get('date', ''),
-                            'duration': video_data.get('duration', 0),
-                            'url': clip_url
-                        }
-                except json.JSONDecodeError:
-                    pass
-            
-            # Fallback - próbujemy wyciągnąć podstawowe dane z HTML
-            title_match = re.search(r'<title[^>]*>([^<]+)</title>', content)
-            title = title_match.group(1) if title_match else ''
-            
-            # Usuwamy "VK" z tytułu
-            if title.endswith(' | VK'):
-                title = title[:-5]
-            
-            return {
-                'title': title,
-                'video_id': '',
-                'views': 0,  # Nie można łatwo wyciągnąć przez scraping
-                'likes': 0,
-                'comments': 0,
-                'date': '',
-                'duration': 0,
-                'url': clip_url
-            }
-            
-        except Exception as e:
-            logger.error(f"Błąd VK scraping konkretnego clip: {e}")
             return None
     
     def _create_mock_vk_clips(self, user_id: str) -> List[Dict[str, Any]]:
