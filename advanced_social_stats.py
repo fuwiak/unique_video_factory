@@ -725,42 +725,62 @@ class AdvancedSocialStatsChecker:
             return None
     
     def _get_vk_clip_by_id(self, owner_id: str, video_id: str) -> Optional[Dict[str, Any]]:
-        """Pobiera konkretny VK clip przez API"""
+        """Pobiera konkretny VK clip przez wall.get API"""
         try:
             access_token = self.api_keys['vk']
             
-            url = "https://api.vk.com/method/video.get"
+            # Używamy wall.get zamiast video.get
+            url = "https://api.vk.com/method/wall.get"
             params = {
-                'videos': f"{owner_id}_{video_id}",
                 'access_token': access_token,
-                'v': '5.131'
+                'v': '5.131',
+                'owner_id': owner_id,
+                'count': 50,  # Pobierz więcej postów żeby znaleźć video
+                'extended': 1
             }
             
-            response = self.session.get(url, params=params, timeout=10)
+            response = self.session.get(url, params=params, timeout=15)
             data = response.json()
             
-            if 'response' not in data or 'items' not in data['response'] or not data['response']['items']:
+            if 'error' in data:
+                logger.error(f"Błąd VK wall.get API: {data['error']}")
                 return None
             
-            video = data['response']['items'][0]
+            if 'response' not in data or 'items' not in data['response']:
+                logger.warning(f"Brak danych w odpowiedzi wall.get dla {owner_id}")
+                return None
             
-            # Konwertujemy timestamp na datę
-            date_timestamp = video.get('date', 0)
-            date_str = datetime.fromtimestamp(date_timestamp).strftime('%Y-%m-%d') if date_timestamp else ''
+            items = data['response']['items']
             
-            return {
-                'title': video.get('title', ''),
-                'video_id': video.get('id', ''),
-                'views': video.get('views', 0),
-                'likes': video.get('likes', {}).get('count', 0) if isinstance(video.get('likes'), dict) else video.get('likes', 0),
-                'comments': video.get('comments', 0),
-                'date': date_str,
-                'duration': video.get('duration', 0),
-                'url': f"https://vk.com/video{owner_id}_{video_id}"
-            }
+            # Szukamy konkretnego video w postach
+            for item in items:
+                if 'attachments' in item:
+                    for attachment in item['attachments']:
+                        if attachment.get('type') == 'video':
+                            video = attachment['video']
+                            if str(video.get('id')) == video_id:
+                                # Znaleźliśmy nasze video!
+                                
+                                # Konwertujemy timestamp na datę
+                                date_timestamp = item.get('date', 0)
+                                date_str = datetime.fromtimestamp(date_timestamp).strftime('%Y-%m-%d') if date_timestamp else ''
+                                
+                                return {
+                                    'title': video.get('title', ''),
+                                    'video_id': video.get('id', ''),
+                                    'views': video.get('views', 0),
+                                    'likes': video.get('likes', {}).get('count', 0) if isinstance(video.get('likes'), dict) else video.get('likes', 0),
+                                    'comments': video.get('comments', 0),
+                                    'date': date_str,
+                                    'duration': video.get('duration', 0),
+                                    'url': video.get('player', f"https://vk.com/video{owner_id}_{video_id}")
+                                }
+            
+            logger.warning(f"Nie znaleziono video {video_id} w postach użytkownika {owner_id}")
+            return None
             
         except Exception as e:
-            logger.error(f"Błąd VK API konkretnego clip: {e}")
+            logger.error(f"Błąd VK wall.get API konkretnego clip: {e}")
             return None
     
     def _get_vk_clips_scraping(self, user_id: str, profile_url: str) -> Optional[List[Dict[str, Any]]]:

@@ -77,7 +77,7 @@ def get_api_keys():
         'youtube': os.getenv('YOUTUBE_API_KEY'),
         'instagram': os.getenv('INSTAGRAM_ACCESS_TOKEN'),
         'tiktok': os.getenv('TIKTOK_ACCESS_TOKEN'),
-        'vk': os.getenv('VK_ACCESS_TOKEN'),
+        'vk': os.getenv('VK_TOKEN'),  # Zmieniono z VK_ACCESS_TOKEN na VK_TOKEN
         'likee': os.getenv('LIKEE_ACCESS_TOKEN')
     }
 
