@@ -220,13 +220,25 @@ if USE_SELF_HOSTED_API:
     logger.info(f"   API available: {api_available}")
     
     if not api_available:
-        logger.error("❌ Self-hosted Bot API is required but not available!")
-        logger.error(f"   Expected to reach: {SELF_HOSTED_API_URL}")
-        logger.error("   Please start the self-hosted API service first:")
-        logger.error("   - Docker: docker-compose up telegram-bot-api")
-        logger.error("   - Native: ./start_self_hosted_api.sh")
-        logger.error("   - Systemd: sudo systemctl start telegram-bot-api@API_ID:API_HASH")
-        raise RuntimeError("Self-hosted Bot API is required but not available")
+        logger.warning("⚠️ Self-hosted Bot API not available, trying to start it...")
+        
+        # Try to start self-hosted API server
+        if start_self_hosted_api_server():
+            logger.info("✅ Self-hosted Bot API started successfully")
+            # Wait a bit for server to be ready
+            import time
+            time.sleep(5)
+            
+            # Check again if API is now available
+            api_available = check_self_hosted_api()
+            if api_available:
+                logger.info("✅ Self-hosted Bot API is now available")
+            else:
+                logger.error("❌ Self-hosted Bot API failed to start")
+                raise RuntimeError("Self-hosted Bot API is required but not available")
+        else:
+            logger.error("❌ Failed to start self-hosted Bot API")
+            raise RuntimeError("Self-hosted Bot API is required but not available")
     
     # Use self-hosted API
     logger.info("🚀 Using self-hosted Bot API (Railway deployment)")
