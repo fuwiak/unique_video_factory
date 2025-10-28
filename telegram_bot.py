@@ -952,7 +952,7 @@ class TelegramVideoBot:
                                     total_views = sum(clip.get('views', 0) for clip in data['clips'])
                                     stats_summary += f"**{platform_name}:**\n"
                                     stats_summary += f"• Clips: {clips_count}\n"
-                                    stats_summary += f"• Total views: {total_views:,}\n\n"
+                                    stats_summary += f"• Total views: {total_views}\n\n"
                                 else:
                                     stats_summary += f"**{platform_name}:** ❌ No clips found\n\n"
                             else:
@@ -1107,7 +1107,7 @@ class TelegramVideoBot:
                     else:
                         stats_summary += f"**{platform.title()}:** ❌ Ошибка\n\n"
                 
-                stats_summary += f"📈 **Общее количество подписчиков: {total_followers:,}**"
+                stats_summary += f"📈 **Общее количество подписчиков: {total_followers}**"
                 
                 await update.message.reply_text(
                     f"✅ **Карта блогера создана!**\n\n"
