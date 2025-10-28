@@ -431,7 +431,6 @@ class TelegramVideoBot:
         
         # Google Sheets integration
         self.google_sheets = GoogleSheetsIntegration()
-        self.google_sheets.init_google_sheets()
         
         # Social stats checker
         self.social_stats_checker = AdvancedSocialStatsChecker()

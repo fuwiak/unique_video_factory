@@ -1181,6 +1181,106 @@ class AdvancedSocialStatsChecker:
         
         return results
 
+    def extract_vk_clips_views(self, clips_url: str) -> Dict[str, Any]:
+        """Ekstraktuje wyświetlenia z VK Clips używając VK API"""
+        try:
+            if not self.api_keys.get('vk'):
+                return {'error': 'VK API nie jest dostępny'}
+            
+            logger.info(f"Ekstraktowanie wyświetleń VK Clips: {clips_url}")
+            
+            # Wyciągamy username z URL
+            if '/clips/' in clips_url:
+                username = clips_url.split('/clips/')[-1].split('/')[0]
+            else:
+                return {'error': 'Nieprawidłowy URL VK Clips'}
+            
+            # Używamy VK API przez requests (nie vk_api)
+            access_token = self.api_keys['vk']
+            
+            # Szukamy użytkownika po username
+            try:
+                url = "https://api.vk.com/method/users.get"
+                params = {
+                    'access_token': access_token,
+                    'v': '5.131',
+                    'user_ids': username,
+                    'fields': 'counters'
+                }
+                
+                response = self.session.get(url, params=params, timeout=15)
+                data = response.json()
+                
+                if 'error' in data:
+                    return {'error': f'Błąd VK API: {data["error"]}'}
+                
+                if 'response' not in data or not data['response']:
+                    return {'error': 'Nie znaleziono użytkownika VK'}
+                
+                user = data['response'][0]
+                user_id = user['id']
+                
+                # Pobieramy posty użytkownika (ostatnie 10)
+                wall_url = "https://api.vk.com/method/wall.get"
+                wall_params = {
+                    'access_token': access_token,
+                    'v': '5.131',
+                    'owner_id': user_id,
+                    'count': 10,
+                    'filter': 'owner',
+                    'extended': 1
+                }
+                
+                wall_response = self.session.get(wall_url, params=wall_params, timeout=15)
+                wall_data = wall_response.json()
+                
+                clips_data = {
+                    'platform': 'VK Clips',
+                    'username': username,
+                    'user_id': user_id,
+                    'user_name': f"{user.get('first_name', '')} {user.get('last_name', '')}".strip(),
+                    'method': 'VK API',
+                    'clips': []
+                }
+                
+                if 'response' in wall_data and 'items' in wall_data['response']:
+                    for post in wall_data['response']['items']:
+                        # Sprawdzamy czy to clip (ma video)
+                        if post.get('attachments'):
+                            for attachment in post['attachments']:
+                                if attachment['type'] == 'video':
+                                    video = attachment['video']
+                                    clip_info = {
+                                        'post_id': post['id'],
+                                        'video_id': video.get('id'),
+                                        'title': video.get('title', ''),
+                                        'description': video.get('description', ''),
+                                        'views': video.get('views', 0),
+                                        'duration': video.get('duration', 0),
+                                        'date': datetime.fromtimestamp(post['date']).strftime('%Y-%m-%d %H:%M:%S'),
+                                        'likes': post.get('likes', {}).get('count', 0),
+                                        'comments': post.get('comments', {}).get('count', 0),
+                                        'reposts': post.get('reposts', {}).get('count', 0)
+                                    }
+                                    clips_data['clips'].append(clip_info)
+                
+                # Sortujemy po dacie (najnowsze pierwsze)
+                clips_data['clips'].sort(key=lambda x: x['date'], reverse=True)
+                
+                # Dodajemy statystyki
+                total_views = sum(clip['views'] for clip in clips_data['clips'])
+                clips_data['total_views'] = total_views
+                clips_data['clips_count'] = len(clips_data['clips'])
+                
+                return clips_data
+                
+            except Exception as e:
+                return {'error': f'Błąd VK API: {e}'}
+                
+        except Exception as e:
+            logger.error(f"Błąd VK Clips: {e}")
+            return {'error': f'Błąd VK Clips: {str(e)}'}
+
 
 def main():
     """Główna funkcja"""
