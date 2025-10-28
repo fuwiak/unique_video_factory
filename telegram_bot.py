@@ -27,6 +27,8 @@ from telegram.ext import (
 from dotenv import load_dotenv
 import yadisk
 from video_uniquizer import VideoUniquizer
+from google_sheets_integration import GoogleSheetsIntegration
+from advanced_social_stats import AdvancedSocialStatsChecker
 
 # Загружаем переменные окружения
 load_dotenv()
@@ -250,6 +252,9 @@ else:
 # Состояния пользователей
 user_states = {}
 
+# Состояния для карт блогеров
+blogger_states = {}
+
 # Состояния менеджеров для апрува видео
 manager_states = {}
 
@@ -423,6 +428,12 @@ class TelegramVideoBot:
         # Создаем папку для результатов
         self.results_dir = Path("telegram_results")
         self.results_dir.mkdir(exist_ok=True)
+        
+        # Google Sheets integration
+        self.google_sheets = GoogleSheetsIntegration()
+        
+        # Social stats checker
+        self.social_stats_checker = AdvancedSocialStatsChecker()
     
     def init_yandex_folders(self):
         """Инициализация папок на Yandex Disk"""
@@ -530,6 +541,9 @@ class TelegramVideoBot:
 5. Менеджер одобряет/отклоняет
 6. Одобренные видео отправляются в чатбот
 
+*Команды для всех:*
+• /blogger - создать карту блогера со статистикой
+
 *Команды для менеджеров:*
 • /manager - панель менеджера
 • /queue - очередь на аппрув
@@ -541,6 +555,23 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             help_text,
+            parse_mode='Markdown'
+        )
+    
+    async def blogger_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /blogger - создать карту блогера со статистикой"""
+        user_id = update.effective_user.id
+        
+        # Инициализируем состояние для создания карты блогера
+        blogger_states[user_id] = {
+            'status': 'waiting_for_name',
+            'blogger_name': None,
+            'links': []
+        }
+        
+        await update.message.reply_text(
+            "👤 *Создание карты блогера*\n\n"
+            "Введите имя блогера (например: Лиза):",
             parse_mode='Markdown'
         )
     
@@ -757,6 +788,11 @@ class TelegramVideoBot:
         """Обработка метаданных от пользователя (ID ролика, имя блогера и папки)"""
         user_id = update.effective_user.id
         
+        # Проверяем, создаем ли карту блогера
+        if user_id in blogger_states:
+            await self.handle_blogger_creation(update, context)
+            return
+        
         if user_id not in user_states:
             await update.message.reply_text("❌ Сначала отправьте видео.")
             return
@@ -814,6 +850,184 @@ class TelegramVideoBot:
                 "🎬 Сколько видео создать?",
                 reply_markup=reply_markup
             )
+
+    async def handle_blogger_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка создания карты блогера"""
+        user_id = update.effective_user.id
+        text = update.message.text.strip()
+        state = blogger_states[user_id]
+        
+        if state['status'] == 'waiting_for_name':
+            # Сохраняем имя блогера
+            state['blogger_name'] = text
+            state['status'] = 'waiting_for_links'
+            
+            await update.message.reply_text(
+                f"✅ Имя блогера: **{text}**\n\n"
+                "🔗 Теперь отправьте ссылки на профили социальных сетей:\n\n"
+                "Поддерживаемые платформы:\n"
+                "• Instagram\n"
+                "• YouTube\n"
+                "• TikTok\n"
+                "• VK\n"
+                "• Likee\n\n"
+                "Отправляйте по одной ссылке за раз.\n"
+                "Когда закончите, отправьте: **готово**",
+                parse_mode='Markdown'
+            )
+            
+        elif state['status'] == 'waiting_for_links':
+            if text.lower() == 'готово':
+                await self.process_blogger_links(user_id, update)
+            else:
+                # Проверяем, является ли ссылка валидной
+                if self.is_valid_social_link(text):
+                    state['links'].append(text)
+                    await update.message.reply_text(
+                        f"✅ Добавлена ссылка: {text}\n\n"
+                        f"Всего ссылок: {len(state['links'])}\n\n"
+                        "Отправьте еще ссылку или напишите **готово** для завершения.",
+                        parse_mode='Markdown'
+                    )
+                else:
+                    await update.message.reply_text(
+                        "❌ Неверная ссылка. Поддерживаемые платформы:\n"
+                        "• Instagram (instagram.com)\n"
+                        "• YouTube (youtube.com)\n"
+                        "• TikTok (tiktok.com)\n"
+                        "• VK (vk.com)\n"
+                        "• Likee (likee.video)\n\n"
+                        "Попробуйте еще раз или напишите **готово**."
+                    )
+
+    def is_valid_social_link(self, link: str) -> bool:
+        """Проверяет, является ли ссылка валидной социальной сетью"""
+        valid_domains = [
+            'instagram.com', 'youtube.com', 'tiktok.com', 'vk.com', 'likee.video'
+        ]
+        link = link.lower().strip()
+        return any(domain in link for domain in valid_domains)
+
+    async def process_blogger_links(self, user_id: int, update: Update):
+        """Обрабатывает ссылки блогера и создает карту"""
+        state = blogger_states[user_id]
+        blogger_name = state['blogger_name']
+        links = state['links']
+        
+        if not links:
+            await update.message.reply_text(
+                "❌ Не добавлено ни одной ссылки.\n"
+                "Используйте /blogger для повторного создания карты."
+            )
+            # Очищаем состояние
+            del blogger_states[user_id]
+            return
+        
+        await update.message.reply_text(
+            f"🔄 Обрабатываю ссылки для **{blogger_name}**...\n"
+            f"Найдено ссылок: {len(links)}",
+            parse_mode='Markdown'
+        )
+        
+        try:
+            # Группируем ссылки по платформам
+            platform_urls = self.group_links_by_platform(links)
+            
+            # Собираем статистику
+            stats_results = {}
+            for platform, url in platform_urls.items():
+                await update.message.reply_text(f"📊 Собираю статистику {platform}...")
+                
+                try:
+                    if platform.lower() == 'youtube':
+                        result = self.social_stats_checker.check_youtube_stats(url)
+                    elif platform.lower() == 'instagram':
+                        result = self.social_stats_checker.check_instagram_stats(url)
+                    elif platform.lower() == 'tiktok':
+                        result = self.social_stats_checker.check_tiktok_stats(url)
+                    elif platform.lower() == 'vk':
+                        result = self.social_stats_checker.check_vk_stats(url)
+                    elif platform.lower() == 'likee':
+                        result = self.social_stats_checker.check_likee_stats(url)
+                    else:
+                        continue
+                    
+                    stats_results[platform] = result
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка сбора статистики для {platform}: {e}")
+                    stats_results[platform] = {'platform': platform, 'error': str(e)}
+            
+            # Добавляем имя блогера к результатам
+            for platform, data in stats_results.items():
+                if 'error' not in data:
+                    data['blogger_name'] = blogger_name
+                    data['user_name'] = blogger_name
+            
+            # Сохраняем в Google Sheets
+            await update.message.reply_text("💾 Сохраняю в Google Sheets...")
+            success = self.google_sheets.save_to_sheets(stats_results)
+            
+            if success:
+                # Подсчитываем общее количество подписчиков
+                total_followers = 0
+                stats_summary = f"📊 **Статистика для {blogger_name}:**\n\n"
+                
+                for platform, data in stats_results.items():
+                    if 'error' not in data:
+                        followers = data.get('followers', 0)
+                        if isinstance(followers, (int, float)):
+                            total_followers += followers
+                        
+                        stats_summary += f"**{platform.title()}:**\n"
+                        stats_summary += f"• Подписчики: {data.get('followers', 'N/A')}\n"
+                        stats_summary += f"• Видео: {data.get('videos', 'N/A')}\n"
+                        stats_summary += f"• Просмотры: {data.get('views', 'N/A')}\n\n"
+                    else:
+                        stats_summary += f"**{platform.title()}:** ❌ Ошибка\n\n"
+                
+                stats_summary += f"📈 **Общее количество подписчиков: {total_followers:,}**"
+                
+                await update.message.reply_text(
+                    f"✅ **Карта блогера создана!**\n\n"
+                    f"{stats_summary}\n\n"
+                    "📋 Данные сохранены в Google Sheets.",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "❌ Ошибка сохранения в Google Sheets.\n"
+                    "Проверьте настройки Google Sheets."
+                )
+            
+        except Exception as e:
+            logger.error(f"Ошибка обработки ссылок блогера: {e}")
+            await update.message.reply_text(
+                f"❌ Ошибка обработки ссылок: {str(e)}"
+            )
+        
+        finally:
+            # Очищаем состояние
+            del blogger_states[user_id]
+
+    def group_links_by_platform(self, links: list) -> dict:
+        """Группирует ссылки по платформам"""
+        platform_urls = {}
+        
+        for link in links:
+            link_lower = link.lower()
+            if 'instagram.com' in link_lower:
+                platform_urls['Instagram'] = link
+            elif 'youtube.com' in link_lower or 'youtu.be' in link_lower:
+                platform_urls['YouTube'] = link
+            elif 'tiktok.com' in link_lower:
+                platform_urls['TikTok'] = link
+            elif 'vk.com' in link_lower:
+                platform_urls['VK'] = link
+            elif 'likee.video' in link_lower:
+                platform_urls['Likee'] = link
+        
+        return platform_urls
 
     async def handle_metadata(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка метаданных от менеджера"""
@@ -3061,6 +3275,7 @@ def main():
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))
     application.add_handler(CommandHandler("help", bot.help_command))
+    application.add_handler(CommandHandler("blogger", bot.blogger_command))
     application.add_handler(CommandHandler("filters", bot.filters_command))
     application.add_handler(CommandHandler("status", bot.status_command))
     
