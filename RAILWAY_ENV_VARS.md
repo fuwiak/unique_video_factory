@@ -11,6 +11,24 @@ To disable the self-hosted Bot API and use standard Telegram API (20MB limit):
    ```
 3. **Save** and Railway will auto-redeploy
 
+## Build Optimization
+
+The Dockerfile now uses conditional building:
+- **`USE_SELF_HOSTED_API=false`** - Skips building telegram-bot-api (faster deployment, ~15-20 min saved)
+- **`USE_SELF_HOSTED_API=true`** - Builds telegram-bot-api (slower deployment, but 2GB file limit)
+
+### Build Arguments
+
+You can also control the build process using Docker build arguments:
+
+```bash
+# Build without self-hosted API (faster)
+docker build --build-arg USE_SELF_HOSTED_API=false .
+
+# Build with self-hosted API (slower)
+docker build --build-arg USE_SELF_HOSTED_API=true .
+```
+
 ## Environment Variables
 
 ### Required Variables
