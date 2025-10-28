@@ -1,0 +1,5 @@
+# Force Railway rebuild
+# Timestamp: 2025-10-28 12:15:00
+# This file forces Railway to rebuild the application
+# Changes: Fix VK URL conversion bug - preserve parameters in /clips/ URLs
+
