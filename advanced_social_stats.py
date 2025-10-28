@@ -94,13 +94,15 @@ class AdvancedSocialStatsChecker:
             return {'platform': 'YouTube', 'error': str(e)}
     
     def _youtube_api_stats(self, channel_url: str) -> Optional[Dict[str, Any]]:
-        """YouTube Data API v3"""
+        """YouTube Data API v3 - pobiera ostatnie 5 shortsów"""
         try:
             channel_id = self._extract_youtube_channel_id(channel_url)
             if not channel_id:
                 return None
             
             api_key = self.api_keys['youtube']
+            
+            # Pobieramy podstawowe statystyki kanału
             url = "https://www.googleapis.com/youtube/v3/channels"
             params = {
                 'part': 'statistics,snippet',
@@ -111,18 +113,127 @@ class AdvancedSocialStatsChecker:
             response = self.session.get(url, params=params, timeout=10)
             data = response.json()
             
-            if 'items' in data and data['items']:
-                stats = data['items'][0]['statistics']
-                return {
-                    'platform': 'YouTube',
-                    'subscribers': int(stats.get('subscriberCount', 0)),
-                    'total_views': int(stats.get('viewCount', 0)),
-                    'video_count': int(stats.get('videoCount', 0)),
-                    'method': 'YouTube API'
-                }
+            if 'items' not in data or not data['items']:
+                return None
+            
+            stats = data['items'][0]['statistics']
+            
+            # Pobieramy ostatnie 5 shortsów
+            shorts_data = self._get_youtube_shorts(channel_id, api_key)
+            
+            return {
+                'platform': 'YouTube',
+                'subscribers': int(stats.get('subscriberCount', 0)),
+                'total_views': int(stats.get('viewCount', 0)),
+                'video_count': int(stats.get('videoCount', 0)),
+                'shorts': shorts_data,
+                'method': 'YouTube API'
+            }
         except Exception as e:
             logger.error(f"Błąd YouTube API: {e}")
         return None
+    
+    def _get_youtube_shorts(self, channel_id: str, api_key: str) -> List[Dict[str, Any]]:
+        """Pobiera ostatnie 5 shortsów z kanału YouTube"""
+        try:
+            # Pobieramy ostatnie filmy z kanału
+            url = "https://www.googleapis.com/youtube/v3/search"
+            params = {
+                'part': 'snippet',
+                'channelId': channel_id,
+                'type': 'video',
+                'maxResults': 50,  # Pobieramy więcej żeby znaleźć shortsy
+                'order': 'date',
+                'key': api_key
+            }
+            
+            response = self.session.get(url, params=params, timeout=10)
+            data = response.json()
+            
+            if 'items' not in data:
+                return []
+            
+            # Filtrujemy shortsy (mają krótki czas trwania)
+            shorts = []
+            for item in data['items']:
+                video_id = item['id']['videoId']
+                video_details = self._get_video_details(video_id, api_key)
+                
+                if video_details and self._is_short(video_details):
+                    shorts.append({
+                        'title': item['snippet']['title'],
+                        'video_id': video_id,
+                        'url': f"https://www.youtube.com/shorts/{video_id}",
+                        'duration': video_details.get('duration', ''),
+                        'views': video_details.get('views', 0),
+                        'likes': video_details.get('likes', 0),
+                        'comments': video_details.get('comments', 0),
+                        'published_at': item['snippet']['publishedAt']
+                    })
+                    
+                    if len(shorts) >= 5:  # Ostatnie 5 shortsów
+                        break
+            
+            return shorts
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania shortsów: {e}")
+            return []
+    
+    def _get_video_details(self, video_id: str, api_key: str) -> Optional[Dict[str, Any]]:
+        """Pobiera szczegóły konkretnego filmu"""
+        try:
+            url = "https://www.googleapis.com/youtube/v3/videos"
+            params = {
+                'part': 'statistics,contentDetails',
+                'id': video_id,
+                'key': api_key
+            }
+            
+            response = self.session.get(url, params=params, timeout=10)
+            data = response.json()
+            
+            if 'items' not in data or not data['items']:
+                return None
+            
+            item = data['items'][0]
+            stats = item['statistics']
+            duration = item['contentDetails']['duration']
+            
+            return {
+                'duration': duration,
+                'views': int(stats.get('viewCount', 0)),
+                'likes': int(stats.get('likeCount', 0)),
+                'comments': int(stats.get('commentCount', 0))
+            }
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania szczegółów filmu {video_id}: {e}")
+            return None
+    
+    def _is_short(self, video_details: Dict[str, Any]) -> bool:
+        """Sprawdza czy film to short (krótszy niż 60 sekund)"""
+        try:
+            duration = video_details.get('duration', '')
+            if not duration:
+                return False
+            
+            # YouTube duration format: PT1M30S (1 minuta 30 sekund)
+            import re
+            match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration)
+            if not match:
+                return False
+            
+            hours = int(match.group(1) or 0)
+            minutes = int(match.group(2) or 0)
+            seconds = int(match.group(3) or 0)
+            
+            total_seconds = hours * 3600 + minutes * 60 + seconds
+            return total_seconds <= 60  # Shorts są krótsze niż 60 sekund
+            
+        except Exception as e:
+            logger.error(f"Błąd sprawdzania czy to short: {e}")
+            return False
     
     def _youtube_scraping_stats(self, channel_url: str) -> Optional[Dict[str, Any]]:
         """Scraping YouTube z różnych źródeł"""

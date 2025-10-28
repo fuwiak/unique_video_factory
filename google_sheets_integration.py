@@ -31,6 +31,7 @@ class GoogleSheetsIntegration:
         self.sheet_id = "1p6bQ3Ck7qMv8M6vobXQcnEjXXdECAoBOlmy2_n9sUPI"
         self.credentials_file = "google_credentials.json"
         self.sheet = None
+        self.gc = None  # Google Sheets client
         
         # Inicjalizacja Google Sheets
         success = self.init_google_sheets()
@@ -80,8 +81,8 @@ class GoogleSheetsIntegration:
             )
             
             # Łączymy się z Google Sheets
-            gc = gspread.authorize(creds)
-            self.sheet = gc.open_by_key(self.sheet_id).sheet1
+            self.gc = gspread.authorize(creds)
+            self.sheet = self.gc.open_by_key(self.sheet_id).sheet1
             
             logger.info("Google Sheets połączone pomyślnie (ze zmiennych środowiskowych)")
             return True
@@ -115,8 +116,8 @@ class GoogleSheetsIntegration:
             )
             
             # Łączymy się z Google Sheets
-            gc = gspread.authorize(creds)
-            self.sheet = gc.open_by_key(self.sheet_id).sheet1
+            self.gc = gspread.authorize(creds)
+            self.sheet = self.gc.open_by_key(self.sheet_id).sheet1
             
             logger.info("Google Sheets połączone pomyślnie")
             return True
@@ -189,11 +190,12 @@ class GoogleSheetsIntegration:
             platform_name = platform_data.get('platform', platform)
             user_name = platform_data.get('user_name', platform_data.get('username', ''))
             
-            # Sprawdzamy czy to struktura blogger cards (bez clips/videos jako listy)
+            # Sprawdzamy czy to struktura blogger cards (bez clips/videos/shorts jako listy)
             has_clips_list = 'clips' in platform_data and isinstance(platform_data.get('clips'), list)
             has_videos_list = 'videos' in platform_data and isinstance(platform_data.get('videos'), list)
+            has_shorts_list = 'shorts' in platform_data and isinstance(platform_data.get('shorts'), list)
             
-            if not has_clips_list and not has_videos_list:
+            if not has_clips_list and not has_videos_list and not has_shorts_list:
                 # Struktura blogger cards - dane profilu
                 followers = platform_data.get('followers', 0)
                 
@@ -295,8 +297,100 @@ class GoogleSheetsIntegration:
                     ]
                     
                     rows.append(row)
+            
+            elif 'shorts' in platform_data and platform_data['shorts']:
+                for short in platform_data['shorts']:
+                    # Obliczamy historyczne wyświetlenia dla tego konkretnego shorta
+                    current_views = short.get('views', 0)
+                    historical = self.calculate_historical_views(current_views, platform)
+                    
+                    # Obliczamy zmiany procentowe
+                    daily_change = self.calculate_percentage_change(
+                        current_views, historical['yesterday']
+                    )
+                    weekly_change = self.calculate_percentage_change(
+                        current_views, historical['week_ago']
+                    )
+                    
+                    # Przygotowujemy wiersz dla tego shorta
+                    row = [
+                        current_date,
+                        platform_name,
+                        user_name,
+                        short.get('title', '')[:100],  # Nazwa shorta
+                        str(current_views),  # Просмотры сегодня
+                        str(historical['yesterday']),  # Просмотры вчера
+                        str(historical['week_ago']),  # Просмотры неделю назад
+                        f"{daily_change}%",  # Изменение за день
+                        f"{weekly_change}%",  # Изменение за неделю
+                        short.get('published_at', '')[:10],  # Дата публикации
+                        f"{short.get('duration', '')}",  # Длительность
+                        str(short.get('likes', 0)),  # Лайки
+                        str(short.get('comments', 0)),  # Комментарии
+                        short.get('url', '')  # Ссылка на short
+                    ]
+                    
+                    rows.append(row)
         
         return rows
+    
+    def get_or_create_blogger_sheet(self, blogger_name: str):
+        """Pobiera lub tworzy arkusz dla blogera"""
+        try:
+            if not self.gc:
+                logger.error("Google Sheets client nie jest zainicjalizowany")
+                return None
+            
+            # Otwieramy główny spreadsheet
+            spreadsheet = self.gc.open_by_key(self.sheet_id)
+            
+            # Sprawdzamy czy arkusz dla blogera już istnieje
+            try:
+                sheet = spreadsheet.worksheet(blogger_name)
+                logger.info(f"Znaleziono istniejący arkusz dla {blogger_name}")
+                return sheet
+            except gspread.WorksheetNotFound:
+                # Tworzymy nowy arkusz
+                logger.info(f"Tworzenie nowego arkusza dla {blogger_name}")
+                sheet = spreadsheet.add_worksheet(title=blogger_name, rows=1000, cols=20)
+                
+                # Dodajemy nagłówki
+                headers = self.prepare_headers()
+                sheet.append_row(headers)
+                
+                logger.info(f"Utworzono arkusz {blogger_name} z nagłówkami")
+                return sheet
+                
+        except Exception as e:
+            logger.error(f"Błąd pobierania/tworzenia arkusza dla {blogger_name}: {e}")
+            return None
+    
+    def save_to_blogger_sheet(self, blogger_name: str, data: Dict[str, Any]) -> bool:
+        """Zapisuje dane do arkusza konkretnego blogera"""
+        try:
+            # Pobieramy lub tworzymy arkusz dla blogera
+            sheet = self.get_or_create_blogger_sheet(blogger_name)
+            if not sheet:
+                return False
+            
+            # Przygotowujemy dane
+            rows = self.format_data_for_sheets(data)
+            
+            if not rows:
+                logger.warning("Brak danych do zapisania")
+                return False
+            
+            # Dodajemy dane do arkusza blogera
+            for row in rows:
+                sheet.append_row(row)
+                logger.info(f"Dodano wiersz do arkusza {blogger_name}: {row[:3]}...")
+            
+            logger.info(f"Pomyślnie zapisano {len(rows)} wierszy do arkusza {blogger_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Błąd zapisywania do arkusza {blogger_name}: {e}")
+            return False
     
     def save_to_sheets(self, data: Dict[str, Any]) -> bool:
         """Zapisuje dane do Google Sheets"""

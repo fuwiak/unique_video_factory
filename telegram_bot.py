@@ -976,7 +976,7 @@ class TelegramVideoBot:
                 )
                 return
             
-            success = self.google_sheets.save_to_sheets(stats_results)
+            success = self.google_sheets.save_to_blogger_sheet(blogger_name, stats_results)
             
             if success:
                 # Подсчитываем общее количество подписчиков
@@ -1033,11 +1033,26 @@ class TelegramVideoBot:
             elif 'tiktok.com' in link_lower:
                 platform_urls['TikTok'] = link
             elif 'vk.com' in link_lower:
-                platform_urls['VK'] = link
+                # Конвертируем VK URL в clips URL
+                vk_url = self.convert_vk_to_clips_url(link)
+                platform_urls['VK'] = vk_url
             elif 'likee.video' in link_lower:
                 platform_urls['Likee'] = link
         
         return platform_urls
+    
+    def convert_vk_to_clips_url(self, vk_url: str) -> str:
+        """Конвертирует VK URL в clips URL"""
+        try:
+            # Извлекаем username из URL
+            # Пример: https://vk.com/lizaaaakorzh -> lizaaaakorzh
+            if '/vk.com/' in vk_url:
+                username = vk_url.split('/vk.com/')[-1].split('?')[0].split('#')[0]
+                return f"https://vk.com/clips/{username}"
+            return vk_url
+        except Exception as e:
+            logger.error(f"Ошибка конвертации VK URL: {e}")
+            return vk_url
 
     async def handle_metadata(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка метаданных от менеджера"""
