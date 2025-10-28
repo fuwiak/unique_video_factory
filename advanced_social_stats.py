@@ -93,6 +93,41 @@ class AdvancedSocialStatsChecker:
             logger.error(f"Błąd YouTube: {e}")
             return {'platform': 'YouTube', 'error': str(e)}
     
+    def get_youtube_short_data(self, short_url: str) -> Dict[str, Any]:
+        """Pobiera dane konkretnego YouTube Short z URL"""
+        try:
+            # Wyciągamy video ID z URL
+            video_id = self._extract_youtube_video_id(short_url)
+            if not video_id:
+                return {'platform': 'YouTube', 'error': 'Nie można wyciągnąć video ID z URL'}
+            
+            # Pobieramy dane przez YouTube API
+            if self.api_keys.get('youtube'):
+                short_data = self._get_youtube_short_by_id(video_id)
+                if short_data:
+                    return {
+                        'platform': 'YouTube',
+                        'url': short_url,
+                        'shorts': [short_data],
+                        'method': 'YouTube API'
+                    }
+            
+            # Fallback - scraping
+            short_data = self._get_youtube_short_scraping(short_url)
+            if short_data:
+                return {
+                    'platform': 'YouTube',
+                    'url': short_url,
+                    'shorts': [short_data],
+                    'method': 'Scraping'
+                }
+            
+            return {'platform': 'YouTube', 'error': 'Nie można pobrać danych short'}
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania YouTube short: {e}")
+            return {'platform': 'YouTube', 'error': str(e)}
+    
     def _youtube_api_stats(self, channel_url: str) -> Optional[Dict[str, Any]]:
         """YouTube Data API v3 - pobiera ostatnie 5 shortsów"""
         try:
@@ -179,6 +214,78 @@ class AdvancedSocialStatsChecker:
         except Exception as e:
             logger.error(f"Błąd pobierania shortsów: {e}")
             return []
+    
+    def _get_youtube_short_by_id(self, video_id: str) -> Optional[Dict[str, Any]]:
+        """Pobiera konkretny YouTube Short przez API"""
+        try:
+            api_key = self.api_keys['youtube']
+            
+            # Pobieramy szczegóły video
+            video_details = self._get_video_details(video_id, api_key)
+            if not video_details:
+                return None
+            
+            # Sprawdzamy czy to short
+            if not self._is_short(video_details):
+                logger.warning(f"Video {video_id} nie jest shortem")
+                return None
+            
+            # Konwertujemy datę
+            published_at = video_details.get('snippet', {}).get('publishedAt', '')
+            date_str = published_at[:10] if published_at else ''  # YYYY-MM-DD
+            
+            return {
+                'title': video_details.get('snippet', {}).get('title', ''),
+                'video_id': video_id,
+                'views': int(video_details.get('statistics', {}).get('viewCount', 0)),
+                'likes': int(video_details.get('statistics', {}).get('likeCount', 0)),
+                'comments': int(video_details.get('statistics', {}).get('commentCount', 0)),
+                'published_at': date_str,
+                'duration': video_details.get('contentDetails', {}).get('duration', ''),
+                'url': f"https://www.youtube.com/shorts/{video_id}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania YouTube short przez API: {e}")
+            return None
+    
+    def _get_youtube_short_scraping(self, short_url: str) -> Optional[Dict[str, Any]]:
+        """Pobiera konkretny YouTube Short przez scraping"""
+        try:
+            response = self._make_request(short_url)
+            if not response:
+                logger.warning(f"Nie można pobrać YouTube short z {short_url}")
+                return None
+            
+            content = response.text
+            
+            # Wyciągamy video ID z URL
+            video_id = self._extract_youtube_video_id(short_url)
+            if not video_id:
+                return None
+            
+            # Szukamy danych w HTML
+            title_match = re.search(r'<title[^>]*>([^<]+)</title>', content)
+            title = title_match.group(1) if title_match else ''
+            
+            # Usuwamy "YouTube" z tytułu
+            if title.endswith(' - YouTube'):
+                title = title[:-10]
+            
+            return {
+                'title': title,
+                'video_id': video_id,
+                'views': 0,  # Nie można łatwo wyciągnąć przez scraping
+                'likes': 0,
+                'comments': 0,
+                'published_at': '',
+                'duration': '',
+                'url': short_url
+            }
+            
+        except Exception as e:
+            logger.error(f"Błąd YouTube scraping konkretnego short: {e}")
+            return None
     
     def _get_video_details(self, video_id: str, api_key: str) -> Optional[Dict[str, Any]]:
         """Pobiera szczegóły konkretnego filmu"""
@@ -294,6 +401,21 @@ class AdvancedSocialStatsChecker:
             match = re.search(pattern, url)
             if match:
                 return match.group(1)
+        return None
+    
+    def _extract_youtube_video_id(self, url: str) -> Optional[str]:
+        """Wyciąganie video ID z URL YouTube"""
+        patterns = [
+            r'youtube\.com/shorts/([a-zA-Z0-9_-]+)',  # YouTube Shorts
+            r'youtube\.com/watch\?v=([a-zA-Z0-9_-]+)',  # Regular YouTube video
+            r'youtu\.be/([a-zA-Z0-9_-]+)',  # Short URL
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                return match.group(1)
+        
         return None
     
     def check_instagram_stats(self, profile_url: str) -> Dict[str, Any]:
@@ -484,6 +606,46 @@ class AdvancedSocialStatsChecker:
             logger.error(f"Błąd VK: {e}")
             return {'platform': 'VK', 'error': str(e)}
     
+    def get_vk_clip_data(self, clip_url: str) -> Dict[str, Any]:
+        """Pobiera dane konkretnego VK clip z URL"""
+        try:
+            # Wyciągamy video_id z URL
+            video_id = self._extract_vk_video_id(clip_url)
+            if not video_id:
+                return {'platform': 'VK', 'error': 'Nie można wyciągnąć video ID z URL'}
+            
+            # Wyciągamy owner_id z URL
+            owner_id = self._extract_vk_owner_id(clip_url)
+            if not owner_id:
+                return {'platform': 'VK', 'error': 'Nie można wyciągnąć owner ID z URL'}
+            
+            # Pobieramy dane przez VK API
+            if self.api_keys.get('vk'):
+                clip_data = self._get_vk_clip_by_id(owner_id, video_id)
+                if clip_data:
+                    return {
+                        'platform': 'VK',
+                        'url': clip_url,
+                        'clips': [clip_data],
+                        'method': 'VK API'
+                    }
+            
+            # Fallback - scraping
+            clip_data = self._get_vk_clip_scraping(clip_url)
+            if clip_data:
+                return {
+                    'platform': 'VK',
+                    'url': clip_url,
+                    'clips': [clip_data],
+                    'method': 'Scraping'
+                }
+            
+            return {'platform': 'VK', 'error': 'Nie można pobrać danych clip'}
+            
+        except Exception as e:
+            logger.error(f"Błąd pobierania VK clip: {e}")
+            return {'platform': 'VK', 'error': str(e)}
+    
     def _get_vk_clips(self, user_id: str, profile_url: str) -> Optional[Dict[str, Any]]:
         """Pobiera ostatnie 5 clipsów z VK"""
         try:
@@ -558,6 +720,45 @@ class AdvancedSocialStatsChecker:
             logger.error(f"Błąd VK API clipsów: {e}")
             return None
     
+    def _get_vk_clip_by_id(self, owner_id: str, video_id: str) -> Optional[Dict[str, Any]]:
+        """Pobiera konkretny VK clip przez API"""
+        try:
+            access_token = self.api_keys['vk']
+            
+            url = "https://api.vk.com/method/video.get"
+            params = {
+                'videos': f"{owner_id}_{video_id}",
+                'access_token': access_token,
+                'v': '5.131'
+            }
+            
+            response = self.session.get(url, params=params, timeout=10)
+            data = response.json()
+            
+            if 'response' not in data or 'items' not in data['response'] or not data['response']['items']:
+                return None
+            
+            video = data['response']['items'][0]
+            
+            # Konwertujemy timestamp na datę
+            date_timestamp = video.get('date', 0)
+            date_str = datetime.fromtimestamp(date_timestamp).strftime('%Y-%m-%d') if date_timestamp else ''
+            
+            return {
+                'title': video.get('title', ''),
+                'video_id': video.get('id', ''),
+                'views': video.get('views', 0),
+                'likes': video.get('likes', {}).get('count', 0) if isinstance(video.get('likes'), dict) else video.get('likes', 0),
+                'comments': video.get('comments', 0),
+                'date': date_str,
+                'duration': video.get('duration', 0),
+                'url': f"https://vk.com/video{owner_id}_{video_id}"
+            }
+            
+        except Exception as e:
+            logger.error(f"Błąd VK API konkretnego clip: {e}")
+            return None
+    
     def _get_vk_clips_scraping(self, user_id: str, profile_url: str) -> Optional[List[Dict[str, Any]]]:
         """Pobiera clipsy przez scraping (fallback)"""
         try:
@@ -592,6 +793,64 @@ class AdvancedSocialStatsChecker:
             
         except Exception as e:
             logger.error(f"Błąd VK scraping clipsów: {e}")
+            return None
+    
+    def _get_vk_clip_scraping(self, clip_url: str) -> Optional[Dict[str, Any]]:
+        """Pobiera konkretny VK clip przez scraping"""
+        try:
+            response = self._make_request(clip_url)
+            if not response:
+                logger.warning(f"Nie można pobrać VK clip z {clip_url}")
+                return None
+            
+            content = response.text
+            
+            # Szukamy danych clip w HTML
+            # VK często ma dane w JSON w script tagach
+            import json
+            
+            # Szukamy window.vkData lub podobnych struktur
+            vk_data_match = re.search(r'window\.vkData\s*=\s*({.*?});', content, re.DOTALL)
+            if vk_data_match:
+                try:
+                    vk_data = json.loads(vk_data_match.group(1))
+                    # Próbujemy wyciągnąć dane video
+                    if 'video' in vk_data:
+                        video_data = vk_data['video']
+                        return {
+                            'title': video_data.get('title', ''),
+                            'video_id': video_data.get('id', ''),
+                            'views': video_data.get('views', 0),
+                            'likes': video_data.get('likes', 0),
+                            'comments': video_data.get('comments', 0),
+                            'date': video_data.get('date', ''),
+                            'duration': video_data.get('duration', 0),
+                            'url': clip_url
+                        }
+                except json.JSONDecodeError:
+                    pass
+            
+            # Fallback - próbujemy wyciągnąć podstawowe dane z HTML
+            title_match = re.search(r'<title[^>]*>([^<]+)</title>', content)
+            title = title_match.group(1) if title_match else ''
+            
+            # Usuwamy "VK" z tytułu
+            if title.endswith(' | VK'):
+                title = title[:-5]
+            
+            return {
+                'title': title,
+                'video_id': '',
+                'views': 0,  # Nie można łatwo wyciągnąć przez scraping
+                'likes': 0,
+                'comments': 0,
+                'date': '',
+                'duration': 0,
+                'url': clip_url
+            }
+            
+        except Exception as e:
+            logger.error(f"Błąd VK scraping konkretnego clip: {e}")
             return None
     
     def _create_mock_vk_clips(self, user_id: str) -> List[Dict[str, Any]]:
@@ -753,24 +1012,33 @@ class AdvancedSocialStatsChecker:
             logger.error(f"Błąd VK scraping: {e}")
         return None
     
-    def _extract_vk_user_id(self, url: str) -> Optional[str]:
-        """Wyciąganie user ID z URL VK"""
-        # Sprawdzamy czy w URL jest parametr owner (numer ID)
+    def _extract_vk_video_id(self, url: str) -> Optional[str]:
+        """Wyciąganie video ID z URL VK clip"""
+        # Format: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239129
+        # Szukamy clip{owner_id}_{video_id}
+        clip_match = re.search(r'clip(\d+)_(\d+)', url)
+        if clip_match:
+            return clip_match.group(2)  # video_id
+        
+        # Alternatywnie szukamy w parametrze z
+        z_match = re.search(r'z=clip\d+_(\d+)', url)
+        if z_match:
+            return z_match.group(1)
+        
+        return None
+    
+    def _extract_vk_owner_id(self, url: str) -> Optional[str]:
+        """Wyciąganie owner ID z URL VK clip"""
+        # Format: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239129
+        # Szukamy owner=123456
         owner_match = re.search(r'owner=(\d+)', url)
         if owner_match:
             return owner_match.group(1)
         
-        # Obsługujemy różne formaty URL VK
-        patterns = [
-            r'vk\.com/clips/([^/?]+)',  # https://vk.com/clips/username
-            r'vk\.com/id(\d+)',         # https://vk.com/id123456
-            r'vk\.com/([^/?]+)',        # https://vk.com/username
-        ]
-        
-        for pattern in patterns:
-            match = re.search(pattern, url)
-            if match:
-                return match.group(1)
+        # Alternatywnie z clip{owner_id}_{video_id}
+        clip_match = re.search(r'clip(\d+)_\d+', url)
+        if clip_match:
+            return clip_match.group(1)
         
         return None
     

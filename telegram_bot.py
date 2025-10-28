@@ -1026,30 +1026,38 @@ class TelegramVideoBot:
                 
                 try:
                     if platform.lower() == 'youtube':
-                        result = self.social_stats_checker.check_youtube_stats(url)
+                        # Sprawdzamy czy to YouTube Shorts URL
+                        if '/shorts/' in url:
+                            result = self.social_stats_checker.get_youtube_short_data(url)
+                        else:
+                            result = self.social_stats_checker.check_youtube_stats(url)
                     elif platform.lower() == 'instagram':
                         result = self.social_stats_checker.check_instagram_stats(url)
                     elif platform.lower() == 'tiktok':
                         result = self.social_stats_checker.check_tiktok_stats(url)
                     elif platform.lower() == 'vk':
-                        # Sprawdzamy czy można wyciągnąć ID z URL
-                        vk_id = self.social_stats_checker._extract_vk_user_id(url)
-                        if not vk_id or not vk_id.isdigit():
-                            # Jeśli nie ma ID, pytamy użytkownika
-                            await update.message.reply_text(
-                                f"🔍 Для VK нужен номер ID пользователя.\n"
-                                f"Найдите его в URL профиля: https://vk.com/id123456789\n"
-                                f"Или в параметре owner: https://vk.com/clips/username?owner=123456789\n\n"
-                                f"Введите номер ID для VK:"
-                            )
+                        # Sprawdzamy czy to VK clip URL
+                        if '/clips/' in url:
+                            result = self.social_stats_checker.get_vk_clip_data(url)
+                        else:
+                            # Sprawdzamy czy można wyciągnąć ID z URL
+                            vk_id = self.social_stats_checker._extract_vk_user_id(url)
+                            if not vk_id or not vk_id.isdigit():
+                                # Jeśli nie ma ID, pytamy użytkownika
+                                await update.message.reply_text(
+                                    f"🔍 Для VK нужен номер ID пользователя.\n"
+                                    f"Найдите его в URL профиля: https://vk.com/id123456789\n"
+                                    f"Или в параметре owner: https://vk.com/clips/username?owner=123456789\n\n"
+                                    f"Введите номер ID для VK:"
+                                )
+                                
+                                # Zmieniamy stan na oczekiwanie VK ID
+                                blogger_states[user_id]['status'] = 'waiting_for_vk_id'
+                                blogger_states[user_id]['vk_url'] = url
+                                blogger_states[user_id]['current_platform'] = platform
+                                return
                             
-                            # Zmieniamy stan na oczekiwanie VK ID
-                            blogger_states[user_id]['status'] = 'waiting_for_vk_id'
-                            blogger_states[user_id]['vk_url'] = url
-                            blogger_states[user_id]['current_platform'] = platform
-                            return
-                        
-                        result = self.social_stats_checker.check_vk_stats(url)
+                            result = self.social_stats_checker.check_vk_stats(url)
                     elif platform.lower() == 'likee':
                         result = self.social_stats_checker.check_likee_stats(url)
                     else:
