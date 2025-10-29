@@ -520,10 +520,9 @@ class TelegramVideoBot:
 
 *Как использовать:*
 1. Отправьте видео файл
-2. Выберите количество видео (1, 3, 5, 10)
-3. Выберите группу фильтров (разные скорости)
-4. Получите обработанные видео с разными эффектами
-5. Каждое видео будет с уникальным ID для аппрува
+2. Выберите группу фильтров (разные скорости)
+3. Получите обработанные видео с разными эффектами
+4. Каждое видео будет с уникальным ID для аппрува
         """
         
         await update.message.reply_text(
@@ -770,7 +769,7 @@ class TelegramVideoBot:
         try:
             success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
             if success:
-                await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+            await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
             else:
                 await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{error_msg}`", parse_mode='Markdown')
         except Exception as e:
@@ -928,7 +927,7 @@ class TelegramVideoBot:
                 # ВСЕГДА генерируем только 1 видео
                 user_states[user_id]['video_count'] = 1
             
-                await update.message.reply_text(
+            await update.message.reply_text(
                 f"✅ Настройки сохранены:\n"
                 f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
                 f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
@@ -1335,12 +1334,12 @@ class TelegramVideoBot:
                     parse_mode='Markdown'
                 )
             else:
-                await update.message.reply_text(
-                    f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
-                    f"📅 Дата публикации: {publish_date}\n"
-                    f"🆔 ID сценария: {scenario_id}\n"
-                    f"📝 Описание: {description}"
-                )
+            await update.message.reply_text(
+                f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
+                f"📅 Дата публикации: {publish_date}\n"
+                f"🆔 ID сценария: {scenario_id}\n"
+                f"📝 Описание: {description}"
+            )
             
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка обработки метаданных: {str(e)}")
@@ -1380,9 +1379,9 @@ class TelegramVideoBot:
             
             # Создаем папку approved, если не существует
             try:
-                if not self.yandex_disk.exists(approved_folder):
-                    self.yandex_disk.mkdir(approved_folder)
-                    logger.info(f"Создана папка approved: {approved_folder}")
+            if not self.yandex_disk.exists(approved_folder):
+                self.yandex_disk.mkdir(approved_folder)
+                logger.info(f"Создана папка approved: {approved_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку approved: {str(e)}"
                 logger.error(error_msg)
@@ -1391,9 +1390,9 @@ class TelegramVideoBot:
             # Создаем подпапку для конкретного видео
             video_folder = f"{approved_folder}/{approval_id}"
             try:
-                if not self.yandex_disk.exists(video_folder):
-                    self.yandex_disk.mkdir(video_folder)
-                    logger.info(f"Создана папка видео: {video_folder}")
+            if not self.yandex_disk.exists(video_folder):
+                self.yandex_disk.mkdir(video_folder)
+                logger.info(f"Создана папка видео: {video_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку видео: {str(e)}"
                 logger.error(error_msg)
@@ -1450,8 +1449,8 @@ class TelegramVideoBot:
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
                         try:
-                            self.yandex_disk.upload(source_path, approved_path)
-                            logger.info(f"Файл загружен локально: {source_path}")
+                        self.yandex_disk.upload(source_path, approved_path)
+                        logger.info(f"Файл загружен локально: {source_path}")
                         except Exception as upload_error:
                             error_msg = f"Не удалось загрузить локальный файл: {str(upload_error)}"
                             logger.error(error_msg)
@@ -1467,8 +1466,8 @@ class TelegramVideoBot:
                 if source_path and os.path.exists(source_path):
                     approved_path = f"{video_folder}/video.mp4"
                     try:
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
+                    self.yandex_disk.upload(source_path, approved_path)
+                    logger.info(f"Файл загружен локально: {source_path}")
                     except Exception as upload_error:
                         error_msg = f"Не удалось загрузить файл на Yandex Disk: {str(upload_error)}"
                         logger.error(error_msg)
@@ -1792,14 +1791,56 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 f"⏳ Обработка..."
             )
             
-            # Запускаем обработку в отдельном потоке
+            # Создаем callback для обновления прогресса в Telegram
             loop = asyncio.get_event_loop()
+            last_update_time = [0]  # Use list to store mutable value
+            
+            def progress_callback(message: str, progress_pct: float = None):
+                """Callback для обновления прогресса в Telegram"""
+                try:
+                    # Обновляем не чаще чем раз в 2 секунды
+                    current_time = time.time()
+                    if current_time - last_update_time[0] < 2.0:
+                        return
+                    last_update_time[0] = current_time
+                    
+                    # Создаем текст сообщения
+                    progress_text = f"🎬 **Применяю фильтр...**\n\n"
+                    progress_text += f"🎨 {filter_info['name']}\n\n"
+                    progress_text += f"📊 **Прогресс:**\n"
+                    progress_text += f"{message}\n"
+                    
+                    if progress_pct is not None:
+                        # Добавляем прогресс-бар
+                        progress_bar_length = 20
+                        filled = int(progress_pct / 100 * progress_bar_length)
+                        progress_bar = "█" * filled + "░" * (progress_bar_length - filled)
+                        progress_text += f"`{progress_bar}` {progress_pct:.1f}%\n"
+                    
+                    # Обновляем сообщение в Telegram асинхронно
+                    async def update_message():
+                        try:
+                            await query.edit_message_text(
+                                progress_text,
+                                parse_mode='Markdown'
+                            )
+                        except Exception as e:
+                            logger.error(f"Ошибка обновления сообщения: {e}")
+                    
+                    # Запускаем обновление в event loop
+                    asyncio.run_coroutine_threadsafe(update_message(), loop)
+                    
+                except Exception as e:
+                    logger.error(f"Ошибка в progress_callback: {e}")
+            
+            # Запускаем обработку в отдельном потоке
             result_path = await loop.run_in_executor(
                 None,
                 self.process_video_sync,
                 str(input_path),
                 str(output_path),
-                filter_info
+                filter_info,
+                progress_callback  # Передаем callback
             )
             
             if result_path and os.path.exists(result_path):
@@ -2016,12 +2057,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 parse_mode='Markdown'
             )
     
-    def process_video_sync(self, input_path: str, output_path: str, filter_info: dict) -> str:
-        """Синхронная обработка видео"""
+    def process_video_sync(self, input_path: str, output_path: str, filter_info: dict, progress_callback=None) -> str:
+        """Синхронная обработка видео с поддержкой progress callback"""
         try:
             from video_uniquizer import VideoUniquizer
             
-            uniquizer = VideoUniquizer()
+            uniquizer = VideoUniquizer(progress_callback=progress_callback)
             result = uniquizer.uniquize_video(
                 input_path=input_path,
                 output_path=output_path,
@@ -2541,7 +2582,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'output_path': str(output_path),
                     'filter_info': filter_info,
                     'video_id': video_id,
-                    'upload_date': upload_date
+                    'upload_date': upload_date,
+                    'chat_id': query.message.chat_id,
+                    'message_id': query.message.message_id,
+                    'bot': context.bot
                 }
                 tasks.append(task)
             
@@ -2772,12 +2816,49 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     trimmed_input_path = self.trim_video_if_needed_sync(task['input_path'], max_duration_seconds=60)
                     compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                     
-                    # Progress callback for user updates
+                    # Progress callback for user updates in Telegram
+                    loop = asyncio.get_event_loop()
+                    last_update_time = [0]
+                    message_ref = {'msg': None}
+                    
                     def progress_callback(message, progress_pct=None):
-                        if progress_pct is not None:
-                            print(f"📊 [{progress_pct:.1f}%] {message}")
-                        else:
-                            print(f"📊 {message}")
+                        try:
+                            # Throttle updates - не чаще чем раз в 2 секунды
+                            current_time = time.time()
+                            if current_time - last_update_time[0] < 2.0:
+                                print(f"📊 {message}")
+                                return
+                            last_update_time[0] = current_time
+                            
+                            # Создаем текст для Telegram
+                            progress_text = f"🎬 **Обработка видео...**\n\n"
+                            progress_text += f"📊 **Прогресс:**\n{message}\n"
+                            
+                            if progress_pct is not None:
+                                progress_bar_length = 20
+                                filled = int(progress_pct / 100 * progress_bar_length)
+                                progress_bar = "█" * filled + "░" * (progress_bar_length - filled)
+                                progress_text += f"`{progress_bar}` {progress_pct:.1f}%\n"
+                            
+                            print(f"📊 [{progress_pct:.1f}%] {message}" if progress_pct else f"📊 {message}")
+                            
+                            # Обновляем сообщение в Telegram асинхронно
+                            if 'bot' in task and 'chat_id' in task and 'message_id' in task:
+                                async def update_message():
+                                    try:
+                                        await task['bot'].edit_message_text(
+                                            chat_id=task['chat_id'],
+                                            message_id=task['message_id'],
+                                            text=progress_text,
+                                            parse_mode='Markdown'
+                                        )
+                                    except Exception as e:
+                                        logger.error(f"Ошибка обновления сообщения: {e}")
+                                
+                                asyncio.run_coroutine_threadsafe(update_message(), loop)
+                            
+                        except Exception as e:
+                            logger.error(f"Ошибка в progress_callback: {e}")
                     
                     uniquizer = VideoUniquizer(progress_callback=progress_callback)
                     result_path = uniquizer.uniquize_video(
