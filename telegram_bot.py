@@ -769,7 +769,7 @@ class TelegramVideoBot:
         try:
             success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
             if success:
-            await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+                await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
             else:
                 await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{error_msg}`", parse_mode='Markdown')
         except Exception as e:
@@ -1334,12 +1334,12 @@ class TelegramVideoBot:
                     parse_mode='Markdown'
                 )
             else:
-            await update.message.reply_text(
-                f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
-                f"📅 Дата публикации: {publish_date}\n"
-                f"🆔 ID сценария: {scenario_id}\n"
-                f"📝 Описание: {description}"
-            )
+                await update.message.reply_text(
+                    f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
+                    f"📅 Дата публикации: {publish_date}\n"
+                    f"🆔 ID сценария: {scenario_id}\n"
+                    f"📝 Описание: {description}"
+                )
             
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка обработки метаданных: {str(e)}")
@@ -1379,9 +1379,9 @@ class TelegramVideoBot:
             
             # Создаем папку approved, если не существует
             try:
-            if not self.yandex_disk.exists(approved_folder):
-                self.yandex_disk.mkdir(approved_folder)
-                logger.info(f"Создана папка approved: {approved_folder}")
+                if not self.yandex_disk.exists(approved_folder):
+                    self.yandex_disk.mkdir(approved_folder)
+                    logger.info(f"Создана папка approved: {approved_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку approved: {str(e)}"
                 logger.error(error_msg)
@@ -1390,9 +1390,9 @@ class TelegramVideoBot:
             # Создаем подпапку для конкретного видео
             video_folder = f"{approved_folder}/{approval_id}"
             try:
-            if not self.yandex_disk.exists(video_folder):
-                self.yandex_disk.mkdir(video_folder)
-                logger.info(f"Создана папка видео: {video_folder}")
+                if not self.yandex_disk.exists(video_folder):
+                    self.yandex_disk.mkdir(video_folder)
+                    logger.info(f"Создана папка видео: {video_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку видео: {str(e)}"
                 logger.error(error_msg)
@@ -1449,8 +1449,8 @@ class TelegramVideoBot:
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
                         try:
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
+                            self.yandex_disk.upload(source_path, approved_path)
+                            logger.info(f"Файл загружен локально: {source_path}")
                         except Exception as upload_error:
                             error_msg = f"Не удалось загрузить локальный файл: {str(upload_error)}"
                             logger.error(error_msg)
@@ -1466,8 +1466,8 @@ class TelegramVideoBot:
                 if source_path and os.path.exists(source_path):
                     approved_path = f"{video_folder}/video.mp4"
                     try:
-                    self.yandex_disk.upload(source_path, approved_path)
-                    logger.info(f"Файл загружен локально: {source_path}")
+                        self.yandex_disk.upload(source_path, approved_path)
+                        logger.info(f"Файл загружен локально: {source_path}")
                     except Exception as upload_error:
                         error_msg = f"Не удалось загрузить файл на Yandex Disk: {str(upload_error)}"
                         logger.error(error_msg)
