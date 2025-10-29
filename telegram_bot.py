@@ -768,11 +768,14 @@ class TelegramVideoBot:
         
         # Перемещаем файл в папку approved
         try:
-            await self.move_to_approved_folder(video_data, approval_id)
-            await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+            success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
+            if success:
+                await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+            else:
+                await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{error_msg}`", parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка перемещения в approved папку: {e}")
-            await update.message.reply_text(f"✅ Видео {approval_id} одобрено, но ошибка при перемещении: {str(e)}")
+            await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{str(e)}`", parse_mode='Markdown')
         
         # Уведомляем пользователя
         await context.bot.send_message(
@@ -922,29 +925,40 @@ class TelegramVideoBot:
                 await self.save_quick_result_to_yandex(update, user_id)
             else:
                 # Расширенный режим - продолжаем workflow
+                # ВСЕГДА генерируем только 1 видео
+                user_states[user_id]['video_count'] = 1
+            
                 await update.message.reply_text(
                 f"✅ Настройки сохранены:\n"
                 f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
                 f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
                 f"📁 Папка: **{text}**\n"
                 f"📂 Создана структура папок на Yandex Disk\n\n"
-                    "🎬 Теперь выберите количество видео:",
+                    "🎨 Выберите группу фильтров:",
                     parse_mode='Markdown'
             )
             
-            # Создаем клавиатуру для выбора количества видео
+                # Создаем клавиатуру для выбора группы фильтров
             keyboard = []
-            for n in [1, 3, 5, 10]:
+            filter_groups = {
+                'vintage': ['vintage_slow', 'vintage_normal', 'vintage_fast'],
+                'dramatic': ['dramatic_slow', 'dramatic_normal', 'dramatic_fast'],
+                'soft': ['soft_slow', 'soft_normal', 'soft_fast'],
+                'vibrant': ['vibrant_slow', 'vibrant_normal', 'vibrant_fast']
+            }
+            
+            for group_name, filter_ids in filter_groups.items():
                 keyboard.append([
                     InlineKeyboardButton(
-                        f"🎬 {n} видео", 
-                        callback_data=f"count_{n}"
+                            f"🎨 {group_name.title()}", 
+                            callback_data=f"group_{group_name}"
                     )
                 ])
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                "🎬 Сколько видео создать?",
+                    "🎬 Создаю 1 видео\n\n"
+                    "🎨 Выберите группу фильтров:",
                 reply_markup=reply_markup
             )
 
@@ -1310,17 +1324,23 @@ class TelegramVideoBot:
             await self.send_to_chatbot(video_data, context)
             
             # Перемещаем файл в папку approved
-            await self.move_to_approved_folder(video_data, approval_id)
+            success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
             
             # Очищаем состояние
             del manager_states[user_id]
             
-            await update.message.reply_text(
-                f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
-                f"📅 Дата публикации: {publish_date}\n"
-                f"🆔 ID сценария: {scenario_id}\n"
-                f"📝 Описание: {description}"
-            )
+            if not success:
+                await update.message.reply_text(
+                    f"❌ Ошибка загрузки на Yandex Disk:\n\n`{error_msg}`",
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
+                    f"📅 Дата публикации: {publish_date}\n"
+                    f"🆔 ID сценария: {scenario_id}\n"
+                    f"📝 Описание: {description}"
+                )
             
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка обработки метаданных: {str(e)}")
@@ -1339,10 +1359,14 @@ class TelegramVideoBot:
             logger.error(f"Ошибка отправки в чатбот: {e}")
     
     async def move_to_approved_folder(self, video_data, approval_id):
-        """Перемещение файла в папку approved"""
+        """Перемещение файла в папку approved
+        
+        Returns:
+            tuple: (success: bool, error_message: str)
+        """
         try:
             if not self.yandex_disk:
-                return
+                return False, "Yandex Disk не настроен"
             
             # Получаем информацию о блогере и папке
             blogger_name = video_data.get('blogger_name', 'unknown')
@@ -1355,15 +1379,25 @@ class TelegramVideoBot:
             approved_folder = f"{content_folder}/approved"
             
             # Создаем папку approved, если не существует
-            if not self.yandex_disk.exists(approved_folder):
-                self.yandex_disk.mkdir(approved_folder)
-                logger.info(f"Создана папка approved: {approved_folder}")
+            try:
+                if not self.yandex_disk.exists(approved_folder):
+                    self.yandex_disk.mkdir(approved_folder)
+                    logger.info(f"Создана папка approved: {approved_folder}")
+            except Exception as e:
+                error_msg = f"Не удалось создать папку approved: {str(e)}"
+                logger.error(error_msg)
+                return False, error_msg
             
             # Создаем подпапку для конкретного видео
             video_folder = f"{approved_folder}/{approval_id}"
-            if not self.yandex_disk.exists(video_folder):
-                self.yandex_disk.mkdir(video_folder)
-                logger.info(f"Создана папка видео: {video_folder}")
+            try:
+                if not self.yandex_disk.exists(video_folder):
+                    self.yandex_disk.mkdir(video_folder)
+                    logger.info(f"Создана папка видео: {video_folder}")
+            except Exception as e:
+                error_msg = f"Не удалось создать папку видео: {str(e)}"
+                logger.error(error_msg)
+                return False, error_msg
             
             # Получаем путь к файлу на Yandex Disk
             source_remote_path = video_data.get('yandex_remote_path')
@@ -1410,27 +1444,39 @@ class TelegramVideoBot:
                     logger.info(f"Исходный файл удален: {source_remote_path}")
                     
                 except Exception as move_error:
-                    logger.error(f"Ошибка перемещения файла: {move_error}")
+                    error_msg = f"Ошибка перемещения файла на Yandex Disk: {str(move_error)}"
+                    logger.error(error_msg)
                     # Fallback - загружаем локальный файл
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
+                        try:
+                            self.yandex_disk.upload(source_path, approved_path)
+                            logger.info(f"Файл загружен локально: {source_path}")
+                        except Exception as upload_error:
+                            error_msg = f"Не удалось загрузить локальный файл: {str(upload_error)}"
+                            logger.error(error_msg)
+                            return False, error_msg
                     else:
-                        logger.error("Локальный файл не найден для fallback")
-                        return False
+                        error_msg = f"Локальный файл не найден: {source_path}"
+                        logger.error(error_msg)
+                        return False, error_msg
             else:
                 # Fallback - загружаем локальный файл
                 source_path = video_data.get('video_path')
                 logger.info(f"Локальный путь из данных: {source_path}")
                 if source_path and os.path.exists(source_path):
                     approved_path = f"{video_folder}/video.mp4"
-                    self.yandex_disk.upload(source_path, approved_path)
-                    logger.info(f"Файл загружен локально: {source_path}")
+                    try:
+                        self.yandex_disk.upload(source_path, approved_path)
+                        logger.info(f"Файл загружен локально: {source_path}")
+                    except Exception as upload_error:
+                        error_msg = f"Не удалось загрузить файл на Yandex Disk: {str(upload_error)}"
+                        logger.error(error_msg)
+                        return False, error_msg
                 else:
-                    logger.error(f"Локальный файл не найден: {source_path}")
-                    logger.error(f"Файл существует: {os.path.exists(source_path) if source_path else 'source_path is None'}")
-                    return False
+                    error_msg = f"Локальный файл не найден: {source_path or 'путь не указан'}"
+                    logger.error(error_msg)
+                    return False, error_msg
             
             # Создаем файл с метаданными
             metadata_content = f"""
@@ -1473,11 +1519,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.info(f"Видео {approval_id} перемещено в approved папку")
             logger.info(f"Финальный путь: {approved_path}")
             logger.info(f"Публичная ссылка: {video_data.get('yandex_public_url', 'Не создана')}")
-            return True
+            return True, ""
             
         except Exception as e:
-            logger.error(f"Ошибка перемещения в approved папку: {e}")
-            return False
+            error_msg = f"Неожиданная ошибка при перемещении в approved папку: {str(e)}"
+            logger.error(error_msg)
+            return False, error_msg
     
     async def handle_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка полученного видео"""
@@ -2063,16 +2110,19 @@ ID сценария: {video_data['metadata']['scenario_id']}
             await query.edit_message_text("❌ Неизвестная группа фильтров.")
             return
         
-        # Выбираем фильтры для каждого видео
+        # Выбираем фильтры для каждого видео (ВСЕГДА 1)
         available_filters = filter_groups[group_name]
         selected_filters = []
         
-        for i in range(video_count):
+        # ВСЕГДА создаем только 1 видео
+        for i in range(1):
             filter_id = available_filters[i % len(available_filters)]
             selected_filters.append(filter_id)
         
         # Сохраняем выбранные фильтры
         user_states[user_id]['selected_filters'] = selected_filters
+        # Принудительно устанавливаем video_count = 1
+        user_states[user_id]['video_count'] = 1
         
         # Обновляем состояние
         user_states[user_id].update({
@@ -2080,10 +2130,11 @@ ID сценария: {video_data['metadata']['scenario_id']}
             'filter_group': group_name
         })
         
+        filter_name = INSTAGRAM_FILTERS[selected_filters[0]]['name']
         await query.edit_message_text(
-            f"🎬 Создаю {video_count} видео с фильтрами {group_name}...\n"
-            f"🎨 Фильтры: {', '.join([INSTAGRAM_FILTERS[f]['name'] for f in selected_filters])}\n"
-            "⏳ Это может занять несколько минут..."
+            f"🎬 Создаю 1 видео с фильтром **{filter_name}** ({group_name})\n\n"
+            "⏳ Это может занять несколько минут...",
+            parse_mode='Markdown'
         )
         
         # Запускаем обработку в фоне
@@ -2847,6 +2898,23 @@ ID сценария: {video_data['metadata']['scenario_id']}
             self.process_multiple_videos(user_id, query, filter_id, video_count, context)
         )
     
+    async def handle_restart(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка кнопки 'Начать заново?'"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        # Очищаем состояние пользователя
+        if user_id in user_states:
+            del user_states[user_id]
+        
+        await query.edit_message_text(
+            "🔄 **Начинаем заново!**\n\n"
+            "📤 Отправьте новое видео для обработки.",
+            parse_mode='Markdown'
+        )
+    
     async def handle_quick_approval(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка быстрого одобрения/отклонения"""
         query = update.callback_query
@@ -2865,12 +2933,32 @@ ID сценария: {video_data['metadata']['scenario_id']}
             if action == "approve":
                 # Одобряем видео
                 logger.info(f"Начинаю одобрение видео {approval_id}")
-                success = await self.move_to_approved_folder(video_data, approval_id)
+                success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
                 logger.info(f"Результат одобрения: {success}")
+                
                 if not success:
-                    await query.edit_message_text(f"❌ Ошибка загрузки файла на Yandex Disk")
+                    # Показываем РЕАЛЬНУЮ ошибку пользователю
+                    keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(
+                        f"❌ **Ошибка загрузки на Yandex Disk**\n\n"
+                        f"**Детали ошибки:**\n"
+                        f"`{error_msg}`\n\n"
+                        f"🔧 Проверьте:\n"
+                        f"• Подключение к Yandex Disk\n"
+                        f"• Наличие свободного места\n"
+                        f"• Права доступа к папкам",
+                        parse_mode='Markdown',
+                        reply_markup=reply_markup
+                    )
                     return
+                
                 video_data['status'] = 'approved'
+                
+                # Создаем кнопку "Начать заново?"
+                keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await query.edit_message_text(
                     f"✅ **ВИДЕО ОДОБРЕНО!**\n\n"
@@ -2878,22 +2966,33 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     f"👤 Блогер: {video_data['blogger_name']}\n"
                     f"📁 Папка: {video_data['folder_name']}\n"
                     f"📂 Перемещено в: approved/\n\n"
-                    f"🎉 Видео готово к публикации!"
+                    f"🎉 Видео готово к публикации!",
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
                 )
                 
-                # Уведомляем пользователя
+                # Уведомляем пользователя с кнопкой "Начать заново?"
+                user_keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
+                user_reply_markup = InlineKeyboardMarkup(user_keyboard)
+                
                 await context.bot.send_message(
                     chat_id=video_data['user_id'],
                     text=f"🎉 **Ваше видео одобрено!**\n\n"
                          f"🆔 ID: {approval_id}\n"
                          f"👤 Блогер: {video_data['blogger_name']}\n"
                          f"📁 Папка: {video_data['folder_name']}\n"
-                         f"✅ Статус: Одобрено"
+                         f"✅ Статус: Одобрено",
+                    parse_mode='Markdown',
+                    reply_markup=user_reply_markup
                 )
                 
             elif action == "reject":
                 # Отклоняем видео
                 video_data['status'] = 'rejected'
+                
+                # Создаем кнопку "Начать заново?"
+                keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await query.edit_message_text(
                     f"❌ **ВИДЕО ОТКЛОНЕНО**\n\n"
@@ -2901,10 +3000,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     f"👤 Блогер: {video_data['blogger_name']}\n"
                     f"📁 Папка: {video_data['folder_name']}\n"
                     f"📂 Перемещено в: not_approved/\n\n"
-                    f"💡 Видео требует доработки"
+                    f"💡 Видео требует доработки",
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
                 )
                 
-                # Уведомляем пользователя
+                # Уведомляем пользователя с кнопкой "Начать заново?"
+                user_keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
+                user_reply_markup = InlineKeyboardMarkup(user_keyboard)
+                
                 await context.bot.send_message(
                     chat_id=video_data['user_id'],
                     text=f"❌ **Видео отклонено**\n\n"
@@ -2912,7 +3016,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
                          f"👤 Блогер: {video_data['blogger_name']}\n"
                          f"📁 Папка: {video_data['folder_name']}\n"
                          f"❌ Статус: Отклонено\n\n"
-                         f"💡 Попробуйте другой фильтр или настройки"
+                         f"💡 Попробуйте другой фильтр или настройки",
+                    parse_mode='Markdown',
+                    reply_markup=user_reply_markup
                 )
             
         except Exception as e:
@@ -4139,6 +4245,7 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_set_value, pattern="^setvalue_"))
     application.add_handler(CallbackQueryHandler(bot.handle_save_to_yandex, pattern="^save_yandex_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_done, pattern="^quick_done$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_restart, pattern="^restart$"))
     
     # Запускаем бота
     print("🤖 Запускаем Telegram бота...")
