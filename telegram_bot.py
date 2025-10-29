@@ -537,41 +537,60 @@ class TelegramVideoBot:
 🆘 *Помощь по использованию бота*
 
 *Поддерживаемые форматы:*
-• MP4, AVI, MOV, MKV
+• MP4, AVI, MOV, MKV и другие
 
 *Максимальный размер:*
 • {max_size} MB
 
-*Доступные фильтры:*
-• 📸 Винтажный - теплые тона
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎬 *ДВА РЕЖИМА РАБОТЫ:*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*⚡ БЫСТРЫЙ РЕЖИМ (рекомендуется):*
+1. Отправьте видео (любой формат)
+2. Нажмите "⚡ Быстрый фильтр"
+3. Выберите фильтр
+4. Получите обработанное видео!
+
+💡 _Идеально для быстрой обработки одного видео_
+
+*📦 РАСШИРЕННЫЙ РЕЖИМ:*
+1. Отправьте видео
+2. Нажмите "📦 Создать варианты"
+3. Введите ID ролика, блогера, папку
+4. Выберите количество видео (1, 3, 5, 10)
+5. Выберите группу фильтров
+6. Получите несколько вариантов
+
+💡 _Для создания нескольких версий с метаданными_
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎨 *ДОСТУПНЫЕ ФИЛЬТРЫ:*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• 📸 Винтажный - теплые тона, виньетка
 • 🎭 Драматический - высокий контраст  
 • 🌸 Мягкий - размытие и яркость
 • 🌈 Яркий - усиленная насыщенность
-• ⏰ Временной - изменение скорости
-• 🎨 Визуальный - цветовые коррекции
-• ✨ Все эффекты - комбинация
 
-*Процесс обработки:*
-1. Отправьте видео
-2. Выберите фильтр
-3. Дождитесь обработки
-4. Видео отправляется на аппрув
-5. Менеджер одобряет/отклоняет
-6. Одобренные видео отправляются в чатбот
+Каждый фильтр в 3 скоростях: медленно (0.98x), нормально (1.0x), быстро (1.02x)
 
-*Команды для всех:*
-• /blogger - создать карту блогера со статистикой
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ *КОМАНДЫ:*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*Для всех:*
 • /settings - настроить параметры фильтров
-• /filters - показать доступные фильтры
-• /status - показать статус обработки
+• /filters - показать все фильтры
+• /status - статус обработки
+• /blogger - создать карту блогера
 
-*Команды для менеджеров:*
+*Для менеджеров:*
 • /manager - панель менеджера
 • /queue - очередь на аппрув
 • /approved - одобренные видео
-• /approve <ID> - одобрить видео
-• /reject <ID> - отклонить видео
-• /send_to_chatbot <ID> - отправить в чатбот
+• /approve <ID> - одобрить
+• /reject <ID> - отклонить
         """.format(max_size=MAX_VIDEO_SIZE_MB)
         
         await update.message.reply_text(
@@ -859,6 +878,10 @@ class TelegramVideoBot:
             await update.message.reply_text("❌ Сначала отправьте видео.")
             return
         
+        # Проверяем режим - обрабатываем только advanced mode
+        if user_states[user_id].get('mode') != 'advanced':
+            return  # Игнорируем текст в quick mode
+        
         text = update.message.text.strip()
         
         # Если еще не ввели ID ролика
@@ -899,7 +922,7 @@ class TelegramVideoBot:
             
             # Создаем клавиатуру для выбора количества видео
             keyboard = []
-            for n in [1]:
+            for n in [1, 3, 5, 10]:
                 keyboard.append([
                     InlineKeyboardButton(
                         f"🎬 {n} видео", 
@@ -1565,12 +1588,222 @@ ID сценария: {video_data['metadata']['scenario_id']}
             'video_id': None
         }
         
-        # Запрашиваем ID ролика
+        # Показываем меню выбора режима
+        keyboard = [
+            [InlineKeyboardButton("⚡ Быстрый фильтр", callback_data="mode_quick")],
+            [InlineKeyboardButton("📦 Создать варианты (расширенный)", callback_data="mode_advanced")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
         await update.message.reply_text(
-            f"✅ Видео получено! ({file_size_mb:.1f} MB)\n\n"
-            "🆔 **Введите ID ролика:**\n"
-            "(например: 001, 002, 123, или любое число)"
+            f"✅ **Видео получено!** ({file_size_mb:.1f} MB)\n\n"
+            f"📁 Файл: `{file_name}`\n\n"
+            f"Выберите режим обработки:",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
         )
+    
+    async def handle_mode_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка выбора режима обработки"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        if user_id not in user_states:
+            await query.edit_message_text("❌ Сессия истекла. Отправьте видео заново.")
+            return
+        
+        mode = query.data.replace('mode_', '')
+        
+        if mode == 'quick':
+            # Быстрый режим - показываем все фильтры
+            user_states[user_id]['mode'] = 'quick'
+            
+            # Создаем клавиатуру со всеми фильтрами
+            keyboard = []
+            
+            # Группируем фильтры
+            filter_groups = {
+                '📸 Винтажный': ['vintage_slow', 'vintage_normal', 'vintage_fast'],
+                '🎭 Драматический': ['dramatic_slow', 'dramatic_normal', 'dramatic_fast'],
+                '🌸 Мягкий': ['soft_slow', 'soft_normal', 'soft_fast'],
+                '🌈 Яркий': ['vibrant_slow', 'vibrant_normal', 'vibrant_fast']
+            }
+            
+            for group_name, filters in filter_groups.items():
+                keyboard.append([InlineKeyboardButton(f"{group_name}", callback_data=f"quickfilter_{filters[1]}")])
+                # Добавляем варианты скорости под каждой группой
+                speed_buttons = []
+                for f in filters:
+                    speed_label = "медленно" if "slow" in f else ("быстро" if "fast" in f else "нормально")
+                    speed_buttons.append(InlineKeyboardButton(f"  {speed_label}", callback_data=f"quickfilter_{f}"))
+                keyboard.append(speed_buttons)
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "⚡ **БЫСТРЫЙ РЕЖИМ**\n\n"
+                "Выберите фильтр для применения к видео:\n\n"
+                "💡 _Выберите фильтр и сразу получите результат!_",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+        elif mode == 'advanced':
+            # Расширенный режим - запрашиваем метаданные
+            user_states[user_id]['mode'] = 'advanced'
+            user_states[user_id]['status'] = 'waiting_video_id'
+            
+            await query.edit_message_text(
+                "📦 **РАСШИРЕННЫЙ РЕЖИМ**\n\n"
+                "Создайте несколько вариантов видео с метаданными.\n\n"
+            "🆔 **Введите ID ролика:**\n"
+                "(например: 001, 002, 123, или любое число)",
+                parse_mode='Markdown'
+            )
+    
+    async def handle_quick_filter(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка быстрого применения фильтра"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        if user_id not in user_states:
+            await query.edit_message_text("❌ Сессия истекла. Отправьте видео заново.")
+            return
+        
+        # Получаем ID фильтра
+        filter_id = query.data.replace('quickfilter_', '')
+        
+        if filter_id not in INSTAGRAM_FILTERS:
+            await query.edit_message_text("❌ Неизвестный фильтр.")
+            return
+        
+        filter_info = INSTAGRAM_FILTERS[filter_id]
+        
+        await query.edit_message_text(
+            f"🎬 **Обрабатываю видео...**\n\n"
+            f"🎨 Фильтр: {filter_info['name']}\n"
+            f"📝 {filter_info['description']}\n\n"
+            f"⏳ Пожалуйста, подождите..."
+        )
+        
+        # Запускаем обработку в фоне
+        asyncio.create_task(
+            self.process_quick_filter(user_id, query, filter_id, context)
+        )
+    
+    async def process_quick_filter(self, user_id: int, query, filter_id: str, context):
+        """Быстрая обработка видео с одним фильтром"""
+        try:
+            # Получаем файл
+            file_id = user_states[user_id]['file_id']
+            file = await context.bot.get_file(file_id)
+            
+            # Создаем временное имя файла
+            unique_id = str(uuid.uuid4())[:8]
+            input_filename = f"quick_{unique_id}.mp4"
+            input_path = self.temp_dir / input_filename
+            
+            # Скачиваем файл
+            await file.download_to_drive(input_path)
+            
+            # Создаем выходной файл
+            output_filename = f"quick_{unique_id}_processed.mp4"
+            output_path = self.temp_dir / output_filename
+            
+            # Получаем настройки фильтра и применяем пользовательские
+            filter_info = INSTAGRAM_FILTERS[filter_id].copy()
+            filter_params = filter_info.get('params', {}).copy()
+            
+            if user_id in user_custom_params:
+                custom_params = user_custom_params[user_id]
+                filter_params.update(custom_params)
+                logger.info(f"📝 Применяю пользовательские настройки: {custom_params}")
+            
+            filter_info['params'] = filter_params
+            
+            # Обрабатываем видео
+            await query.edit_message_text(
+                f"🎬 **Применяю фильтр...**\n\n"
+                f"🎨 {filter_info['name']}\n"
+                f"⚙️ Параметры: {filter_params}\n\n"
+                f"⏳ Обработка..."
+            )
+            
+            # Запускаем обработку в отдельном потоке
+            loop = asyncio.get_event_loop()
+            result_path = await loop.run_in_executor(
+                None,
+                self.process_video_sync,
+                str(input_path),
+                str(output_path),
+                filter_info
+            )
+            
+            if result_path and os.path.exists(result_path):
+                # Отправляем результат
+                file_size_mb = os.path.getsize(result_path) / (1024 * 1024)
+                
+                await query.edit_message_text(
+                    f"✅ **Обработка завершена!**\n\n"
+                    f"🎨 Фильтр: {filter_info['name']}\n"
+                    f"📁 Размер: {file_size_mb:.1f} MB\n\n"
+                    f"📤 Отправляю видео..."
+                )
+                
+                # Отправляем видео
+                with open(result_path, 'rb') as video_file:
+                    await query.message.reply_video(
+                        video=video_file,
+                        caption=f"✅ **Готово!**\n\n"
+                               f"🎨 Фильтр: {filter_info['name']}\n"
+                               f"📁 Размер: {file_size_mb:.1f} MB",
+                        supports_streaming=True,
+                        parse_mode='Markdown'
+                    )
+                
+                # Удаляем временные файлы
+                if os.path.exists(input_path):
+                    os.remove(input_path)
+                if os.path.exists(result_path):
+                    os.remove(result_path)
+                
+            else:
+                await query.edit_message_text(
+                    "❌ **Ошибка обработки видео**\n\n"
+                    "Попробуйте еще раз или выберите другой фильтр."
+                )
+                
+        except Exception as e:
+            logger.error(f"Ошибка быстрой обработки: {e}")
+            await query.edit_message_text(
+                f"❌ **Ошибка обработки:**\n\n"
+                f"`{str(e)}`\n\n"
+                f"Попробуйте еще раз.",
+                parse_mode='Markdown'
+            )
+    
+    def process_video_sync(self, input_path: str, output_path: str, filter_info: dict) -> str:
+        """Синхронная обработка видео"""
+        try:
+            from video_uniquizer import VideoUniquizer
+            
+            uniquizer = VideoUniquizer()
+            result = uniquizer.uniquize_video(
+                input_path=input_path,
+                output_path=output_path,
+                effects=filter_info['effects'],
+                params=filter_info.get('params', {})
+            )
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Ошибка обработки видео: {e}")
+            raise
     
     async def handle_count_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка выбора количества видео"""
@@ -3713,6 +3946,8 @@ def main():
     application.add_handler(MessageHandler(filters.Document.MimeType("video/mp4"), bot.handle_video))       # .MP4 files
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_user_metadata))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_metadata))
+    application.add_handler(CallbackQueryHandler(bot.handle_mode_selection, pattern="^mode_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_quick_filter, pattern="^quickfilter_"))
     application.add_handler(CallbackQueryHandler(bot.handle_count_selection, pattern="^count_"))
     application.add_handler(CallbackQueryHandler(bot.handle_group_selection, pattern="^group_"))
     application.add_handler(CallbackQueryHandler(bot.handle_filter_selection, pattern="^filter_"))
