@@ -270,6 +270,12 @@ blogger_states = {}
 # Состояния менеджеров для апрува видео
 manager_states = {}
 
+# Состояния для настройки параметров фильтров
+settings_states = {}
+
+# Пользовательские настройки параметров
+user_custom_params = {}
+
 # Очередь видео на аппрув
 pending_approvals = {}
 
@@ -277,75 +283,75 @@ pending_approvals = {}
 INSTAGRAM_FILTERS = {
     'vintage_slow': {
         'name': '📸 Винтажный (медленно)',
-        'description': 'Теплые тона, виньетка, зерно, 0.8x скорость',
+        'description': 'Теплые тона, виньетка, зерно, 0.98x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 0.8}
+        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 0.98, 'trim': 0.7}
     },
     'vintage_normal': {
         'name': '📸 Винтажный (нормально)',
         'description': 'Теплые тона, виньетка, зерно, 1.0x скорость',
-        'effects': ['social'],
-        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 1.0}
+        'effects': ['social', 'temporal'],
+        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 1.0, 'trim': 0.5}
     },
     'vintage_fast': {
         'name': '📸 Винтажный (быстро)',
-        'description': 'Теплые тона, виньетка, зерно, 1.2x скорость',
+        'description': 'Теплые тона, виньетка, зерно, 1.02x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 1.2}
+        'params': {'warmth': 0.9, 'vignette': 0.2, 'grain': 0.1, 'speed': 1.02, 'trim': 0.9}
     },
     'dramatic_slow': {
         'name': '🎭 Драматический (медленно)',
-        'description': 'Высокий контраст, тени, блики, 0.8x скорость',
+        'description': 'Высокий контраст, тени, блики, 0.98x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 0.8}
+        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 0.98, 'trim': 0.7}
     },
     'dramatic_normal': {
         'name': '🎭 Драматический (нормально)',
         'description': 'Высокий контраст, тени, блики, 1.0x скорость',
-        'effects': ['social'],
-        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 1.0}
+        'effects': ['social', 'temporal'],
+        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 1.0, 'trim': 0.5}
     },
     'dramatic_fast': {
         'name': '🎭 Драматический (быстро)',
-        'description': 'Высокий контраст, тени, блики, 1.2x скорость',
+        'description': 'Высокий контраст, тени, блики, 1.02x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 1.2}
+        'params': {'contrast': 1.15, 'shadows': 0.8, 'highlights': 1.2, 'speed': 1.02, 'trim': 0.9}
     },
     'soft_slow': {
         'name': '🌸 Мягкий (медленно)',
-        'description': 'Размытие, повышенная яркость, 0.8x скорость',
+        'description': 'Размытие, повышенная яркость, 0.98x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 0.8}
+        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 0.98, 'trim': 0.7}
     },
     'soft_normal': {
         'name': '🌸 Мягкий (нормально)',
         'description': 'Размытие, повышенная яркость, 1.0x скорость',
-        'effects': ['social'],
-        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 1.0}
+        'effects': ['social', 'temporal'],
+        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 1.0, 'trim': 0.5}
     },
     'soft_fast': {
         'name': '🌸 Мягкий (быстро)',
-        'description': 'Размытие, повышенная яркость, 1.2x скорость',
+        'description': 'Размытие, повышенная яркость, 1.02x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 1.2}
+        'params': {'blur': 0.5, 'brightness': 5, 'saturation': 0.9, 'speed': 1.02, 'trim': 0.9}
     },
     'vibrant_slow': {
         'name': '🌈 Яркий (медленно)',
-        'description': 'Усиленная насыщенность, четкость, 0.8x скорость',
+        'description': 'Усиленная насыщенность, четкость, 0.98x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 0.8}
+        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 0.98, 'trim': 0.7}
     },
     'vibrant_normal': {
         'name': '🌈 Яркий (нормально)',
         'description': 'Усиленная насыщенность, четкость, 1.0x скорость',
-        'effects': ['social'],
-        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 1.0}
+        'effects': ['social', 'temporal'],
+        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 1.0, 'trim': 0.5}
     },
     'vibrant_fast': {
         'name': '🌈 Яркий (быстро)',
-        'description': 'Усиленная насыщенность, четкость, 1.2x скорость',
+        'description': 'Усиленная насыщенность, четкость, 1.02x скорость',
         'effects': ['social', 'temporal'],
-        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 1.2}
+        'params': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1, 'speed': 1.02, 'trim': 0.9}
     }
 }
 
@@ -555,6 +561,9 @@ class TelegramVideoBot:
 
 *Команды для всех:*
 • /blogger - создать карту блогера со статистикой
+• /settings - настроить параметры фильтров
+• /filters - показать доступные фильтры
+• /status - показать статус обработки
 
 *Команды для менеджеров:*
 • /manager - панель менеджера
@@ -619,6 +628,47 @@ class TelegramVideoBot:
         
         await update.message.reply_text(
             status_text,
+            parse_mode='Markdown'
+        )
+    
+    async def settings_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /settings - настройка параметров фильтров"""
+        user_id = update.effective_user.id
+        
+        # Инициализируем настройки пользователя если их нет
+        if user_id not in user_custom_params:
+            user_custom_params[user_id] = {}
+        
+        # Создаем меню выбора параметра
+        keyboard = [
+            [InlineKeyboardButton("⚡ Скорость (Speed)", callback_data="adjust_speed")],
+            [InlineKeyboardButton("✂️ Обрезка (Trim)", callback_data="adjust_trim")],
+            [InlineKeyboardButton("🔆 Яркость (Brightness)", callback_data="adjust_brightness")],
+            [InlineKeyboardButton("🎨 Контраст (Contrast)", callback_data="adjust_contrast")],
+            [InlineKeyboardButton("🌈 Насыщенность (Saturation)", callback_data="adjust_saturation")],
+            [InlineKeyboardButton("🔥 Теплота (Warmth)", callback_data="adjust_warmth")],
+            [InlineKeyboardButton("🌫️ Размытие (Blur)", callback_data="adjust_blur")],
+            [InlineKeyboardButton("🔄 Сбросить все", callback_data="adjust_reset")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Показываем текущие настройки
+        current_settings = user_custom_params.get(user_id, {})
+        if current_settings:
+            settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+            settings_text += "**Текущие значения:**\n"
+            for param, value in current_settings.items():
+                settings_text += f"• {param}: **{value}**\n"
+            settings_text += "\n📝 Выберите параметр для изменения:"
+        else:
+            settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+            settings_text += "🎯 Используются стандартные значения\n\n"
+            settings_text += "📝 Выберите параметр для настройки:"
+        
+        await update.message.reply_text(
+            settings_text,
+            reply_markup=reply_markup,
             parse_mode='Markdown'
         )
     
@@ -849,7 +899,7 @@ class TelegramVideoBot:
             
             # Создаем клавиатуру для выбора количества видео
             keyboard = []
-            for n in [1, 3, 5, 10]:
+            for n in [1]:
                 keyboard.append([
                     InlineKeyboardButton(
                         f"🎬 {n} видео", 
@@ -1625,6 +1675,199 @@ ID сценария: {video_data['metadata']['scenario_id']}
             self.process_multiple_videos_parallel(user_id, query, selected_filters, context)
         )
     
+    async def handle_parameter_adjustment(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка выбора параметра для настройки"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        param_name = query.data.replace('adjust_', '')
+        
+        # Обработка сброса настроек
+        if param_name == 'reset':
+            user_custom_params[user_id] = {}
+            await query.edit_message_text(
+                "✅ **Настройки сброшены!**\n\n"
+                "Теперь используются стандартные значения фильтров.\n\n"
+                "Используйте /settings для новых настроек."
+            )
+            return
+        
+        # Сохраняем текущий параметр в состоянии
+        settings_states[user_id] = {'parameter': param_name}
+        
+        # Создаем меню значений в зависимости от параметра
+        param_values = {
+            'speed': [
+                ('0.95x (медленнее)', 0.95),
+                ('0.98x (чуть медленнее)', 0.98),
+                ('1.00x (нормально)', 1.00),
+                ('1.02x (чуть быстрее)', 1.02),
+                ('1.05x (быстрее)', 1.05),
+            ],
+            'trim': [
+                ('0.3 сек', 0.3),
+                ('0.5 сек', 0.5),
+                ('0.7 сек', 0.7),
+                ('1.0 сек', 1.0),
+                ('1.5 сек', 1.5),
+            ],
+            'brightness': [
+                ('-10 (темнее)', -10),
+                ('-5 (чуть темнее)', -5),
+                ('0 (нормально)', 0),
+                ('+5 (чуть светлее)', 5),
+                ('+10 (светлее)', 10),
+            ],
+            'contrast': [
+                ('0.85 (низкий)', 0.85),
+                ('0.95 (чуть низкий)', 0.95),
+                ('1.00 (нормальный)', 1.00),
+                ('1.10 (чуть высокий)', 1.10),
+                ('1.20 (высокий)', 1.20),
+            ],
+            'saturation': [
+                ('0.80 (низкая)', 0.80),
+                ('0.90 (чуть низкая)', 0.90),
+                ('1.00 (нормальная)', 1.00),
+                ('1.10 (чуть высокая)', 1.10),
+                ('1.20 (высокая)', 1.20),
+            ],
+            'warmth': [
+                ('0.80 (холодные тона)', 0.80),
+                ('0.90 (чуть холодные)', 0.90),
+                ('1.00 (нормально)', 1.00),
+                ('1.10 (чуть теплые)', 1.10),
+                ('1.20 (теплые тона)', 1.20),
+            ],
+            'blur': [
+                ('0.0 (без размытия)', 0.0),
+                ('0.3 (легкое)', 0.3),
+                ('0.5 (среднее)', 0.5),
+                ('0.7 (заметное)', 0.7),
+                ('1.0 (сильное)', 1.0),
+            ],
+        }
+        
+        if param_name not in param_values:
+            await query.edit_message_text("❌ Неизвестный параметр.")
+            return
+        
+        # Создаем клавиатуру со значениями
+        keyboard = []
+        for label, value in param_values[param_name]:
+            keyboard.append([
+                InlineKeyboardButton(label, callback_data=f"setvalue_{param_name}_{value}")
+            ])
+        
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="adjust_back")])
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Названия параметров на русском
+        param_names = {
+            'speed': '⚡ Скорость',
+            'trim': '✂️ Обрезка',
+            'brightness': '🔆 Яркость',
+            'contrast': '🎨 Контраст',
+            'saturation': '🌈 Насыщенность',
+            'warmth': '🔥 Теплота',
+            'blur': '🌫️ Размытие',
+        }
+        
+        current_value = user_custom_params.get(user_id, {}).get(param_name, 'стандартное')
+        
+        await query.edit_message_text(
+            f"⚙️ **Настройка параметра**\n\n"
+            f"Параметр: {param_names.get(param_name, param_name)}\n"
+            f"Текущее значение: **{current_value}**\n\n"
+            f"📝 Выберите новое значение:",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
+    async def handle_set_value(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка установки значения параметра"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        # Обработка кнопки "Назад"
+        if query.data == "adjust_back":
+            # Возвращаемся к главному меню настроек
+            await self.show_settings_menu(query, user_id)
+            return
+        
+        # Парсим данные: setvalue_param_value
+        parts = query.data.split('_')
+        if len(parts) < 3:
+            await query.edit_message_text("❌ Ошибка формата данных.")
+            return
+        
+        param_name = parts[1]
+        try:
+            param_value = float(parts[2])
+        except ValueError:
+            await query.edit_message_text("❌ Некорректное значение.")
+            return
+        
+        # Сохраняем значение
+        if user_id not in user_custom_params:
+            user_custom_params[user_id] = {}
+        user_custom_params[user_id][param_name] = param_value
+        
+        # Названия параметров на русском
+        param_names = {
+            'speed': '⚡ Скорость',
+            'trim': '✂️ Обрезка',
+            'brightness': '🔆 Яркость',
+            'contrast': '🎨 Контраст',
+            'saturation': '🌈 Насыщенность',
+            'warmth': '🔥 Теплота',
+            'blur': '🌫️ Размытие',
+        }
+        
+        await query.edit_message_text(
+            f"✅ **Параметр сохранен!**\n\n"
+            f"{param_names.get(param_name, param_name)}: **{param_value}**\n\n"
+            f"💡 Этот параметр будет применен к следующим видео.\n\n"
+            f"Используйте /settings для настройки других параметров."
+        )
+    
+    async def show_settings_menu(self, query, user_id: int):
+        """Показать главное меню настроек"""
+        keyboard = [
+            [InlineKeyboardButton("⚡ Скорость (Speed)", callback_data="adjust_speed")],
+            [InlineKeyboardButton("✂️ Обрезка (Trim)", callback_data="adjust_trim")],
+            [InlineKeyboardButton("🔆 Яркость (Brightness)", callback_data="adjust_brightness")],
+            [InlineKeyboardButton("🎨 Контраст (Contrast)", callback_data="adjust_contrast")],
+            [InlineKeyboardButton("🌈 Насыщенность (Saturation)", callback_data="adjust_saturation")],
+            [InlineKeyboardButton("🔥 Теплота (Warmth)", callback_data="adjust_warmth")],
+            [InlineKeyboardButton("🌫️ Размытие (Blur)", callback_data="adjust_blur")],
+            [InlineKeyboardButton("🔄 Сбросить все", callback_data="adjust_reset")],
+        ]
+        
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        current_settings = user_custom_params.get(user_id, {})
+        if current_settings:
+            settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+            settings_text += "**Текущие значения:**\n"
+            for param, value in current_settings.items():
+                settings_text += f"• {param}: **{value}**\n"
+            settings_text += "\n📝 Выберите параметр для изменения:"
+        else:
+            settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+            settings_text += "🎯 Используются стандартные значения\n\n"
+            settings_text += "📝 Выберите параметр для настройки:"
+        
+        await query.edit_message_text(
+            settings_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
     async def process_multiple_videos_parallel(self, user_id: int, query, selected_filters: list, context):
         """Параллельная обработка нескольких видео с разными фильтрами"""
         try:
@@ -1756,7 +1999,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         processed_chunk = uniquizer.uniquize_video(
                             input_path=chunk,
                             output_path=chunk.replace('.mp4', '_processed.mp4'),
-                            effects=selected_filters[0]['effects']  # Используем первый фильтр для всех частей
+                            effects=selected_filters[0]['effects'],  # Используем первый фильтр для всех частей
+                            params=selected_filters[0].get('params', {})
                         )
                         
                         if processed_chunk:
@@ -1811,12 +2055,24 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 output_filename = f"{upload_date}_{video_id}_{i+1}.mp4"
                 output_path = results_folder / output_filename
                 
+                # Получаем настройки фильтра
+                filter_info = INSTAGRAM_FILTERS[filter_id].copy()
+                filter_params = filter_info.get('params', {}).copy()
+                
+                # Применяем пользовательские настройки если есть
+                if user_id in user_custom_params:
+                    custom_params = user_custom_params[user_id]
+                    filter_params.update(custom_params)
+                    logger.info(f"📝 Применяю пользовательские настройки для видео {i+1}: {custom_params}")
+                
+                filter_info['params'] = filter_params
+                
                 task = {
                     'index': i + 1,
                     'filter_id': filter_id,
                     'input_path': str(input_path),
                     'output_path': str(output_path),
-                    'filter_info': INSTAGRAM_FILTERS[filter_id],
+                    'filter_info': filter_info,
                     'video_id': video_id,
                     'upload_date': upload_date
                 }
@@ -2026,7 +2282,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         processed_chunk = uniquizer.uniquize_video(
                             input_path=compressed_chunk,
                             output_path=chunk.replace('.mp4', '_processed.mp4'),
-                            effects=task['filter_info']['effects']
+                            effects=task['filter_info']['effects'],
+                            params=task['filter_info'].get('params', {})
                         )
                         
                         if processed_chunk:
@@ -2059,7 +2316,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     result_path = uniquizer.uniquize_video(
                         input_path=compressed_input_path,
                         output_path=task['output_path'],
-                        effects=task['filter_info']['effects']
+                        effects=task['filter_info']['effects'],
+                        params=task['filter_info'].get('params', {})
                     )
             else:
                 # Обычная обработка для небольших файлов
@@ -2077,7 +2335,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 result_path = uniquizer.uniquize_video(
                     input_path=compressed_input_path,
                     output_path=task['output_path'],
-                    effects=task['filter_info']['effects']
+                    effects=task['filter_info']['effects'],
+                    params=task['filter_info'].get('params', {})
                 )
             
             # Логируем результат обработки
@@ -2350,7 +2609,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     result_path = uniquizer.uniquize_video(
                         input_path=str(input_path),
                         output_path=str(output_path),
-                        effects=filter_info['effects']
+                        effects=filter_info['effects'],
+                        params=filter_info.get('params', {})
                     )
                     
                     # Загружаем на Yandex Disk
@@ -2544,7 +2804,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
             result_path = uniquizer.uniquize_video(
                 input_path=str(input_path),
                 output_path=str(output_path),
-                effects=filter_info['effects']
+                effects=filter_info['effects'],
+                params=filter_info.get('params', {})
             )
             
             # Уведомляем о завершении обработки
@@ -3434,6 +3695,7 @@ def main():
     application.add_handler(CommandHandler("blogger", bot.blogger_command))
     application.add_handler(CommandHandler("filters", bot.filters_command))
     application.add_handler(CommandHandler("status", bot.status_command))
+    application.add_handler(CommandHandler("settings", bot.settings_command))
     
     # Обработчики для менеджеров
     application.add_handler(CommandHandler("manager", bot.manager_command))
@@ -3455,6 +3717,8 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_group_selection, pattern="^group_"))
     application.add_handler(CallbackQueryHandler(bot.handle_filter_selection, pattern="^filter_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_approval, pattern="^quick_(approve|reject)_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_parameter_adjustment, pattern="^adjust_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_set_value, pattern="^setvalue_"))
     
     # Запускаем бота
     print("🤖 Запускаем Telegram бота...")

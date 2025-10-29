@@ -42,11 +42,12 @@ class VideoUniquizer:
         self.progress_callback = progress_callback
         print(f"Используется устройство: {self.device}")
         
-        # Параметры для заметной уникализации
-        self.speed_range = (0.95, 1.05)  # Заметное изменение скорости
-        self.brightness_range = (-15, 15)  # Заметные изменения яркости
-        self.contrast_range = (0.9, 1.1)  # Заметные изменения контраста
-        self.saturation_range = (0.9, 1.1)  # Заметные изменения насыщенности
+        # Параметры для явной уникализации (минимальные но заметные изменения)
+        self.speed_range = (0.97, 1.03)  # Изменение скорости на 1-3%
+        self.brightness_range = (-10, 10)  # Изменения яркости
+        self.contrast_range = (0.92, 1.08)  # Изменения контраста  
+        self.saturation_range = (0.92, 1.08)  # Изменения насыщенности
+        self.trim_seconds = (0.5, 1.0)  # Обрезка 0.5-1 сек
         
         # Эффекты в стиле Instagram (более заметные)
         self.social_effects = {
@@ -64,19 +65,33 @@ class VideoUniquizer:
             'vibrant': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1}
         }
         
-    def apply_temporal_effects(self, video_path: str, output_path: str) -> str:
+    def apply_temporal_effects(self, video_path: str, output_path: str, speed_factor: float = None, trim_amount: float = None) -> str:
         """
         Применяет временные эффекты (скорость, обрезка)
+        
+        Args:
+            video_path: Путь к входному видео
+            output_path: Путь к выходному видео
+            speed_factor: Конкретный коэффициент скорости (или случайный если None)
+            trim_amount: Сколько секунд обрезать с начала и конца (или случайное если None)
         """
         clip = VideoFileClip(video_path)
         
-        # Случайное изменение скорости
-        speed_factor = random.uniform(*self.speed_range)
-        new_duration = clip.duration / speed_factor
+        # Изменение скорости (используем переданный параметр или случайный)
+        if speed_factor is None:
+            speed_factor = random.uniform(*self.speed_range)
         
-        # Случайная обрезка (убираем 1-5% от начала и конца)
-        trim_start = random.uniform(0, clip.duration * 0.05)
-        trim_end = random.uniform(0, clip.duration * 0.05)
+        print(f"⚡ Применяю изменение скорости: {speed_factor:.3f}x")
+        
+        # Обрезка в СЕКУНДАХ (используем переданный параметр или случайный)
+        if trim_amount is None:
+            trim_amount = random.uniform(*self.trim_seconds)
+        
+        # Обрезаем только если видео достаточно длинное
+        trim_start = min(trim_amount, clip.duration * 0.1)  # Не больше 10% от длины
+        trim_end = min(trim_amount, clip.duration * 0.1)
+        
+        print(f"✂️ Обрезаю {trim_start:.2f}s с начала и {trim_end:.2f}s с конца")
         
         # Применяем изменения
         processed_clip = clip.subclip(trim_start, clip.duration - trim_end)
@@ -243,26 +258,36 @@ class VideoUniquizer:
         print(f"📊 {message}")
         logging.info(f"📊 {message}")
     
-    def apply_social_effects(self, video_path: str, output_path: str) -> str:
+    def apply_social_effects(self, video_path: str, output_path: str, effect_style: str = None, effect_params: dict = None) -> str:
         """
         Применяет естественные эффекты в стиле социальных сетей (с сохранением аудио)
         VidGear first (faster), MoviePy as fallback
+        
+        Args:
+            video_path: Путь к входному видео
+            output_path: Путь к выходному видео
+            effect_style: Название эффекта ('vintage', 'dramatic', 'soft', 'vibrant') или None для случайного
+            effect_params: Параметры эффекта или None для дефолтных
         """
         if VIDGEAR_AVAILABLE:
             try:
                 print("🚀 Using VidGear (faster) for video processing...")
-                return self._apply_social_effects_vidgear(video_path, output_path)
+                return self._apply_social_effects_vidgear(video_path, output_path, effect_style, effect_params)
             except Exception as e:
                 print(f"⚠️ VidGear failed: {e}")
                 print("🔄 Trying MoviePy fallback...")
-                return self._apply_social_effects_moviepy(video_path, output_path)
+                return self._apply_social_effects_moviepy(video_path, output_path, effect_style, effect_params)
         else:
             print("⚠️ VidGear not available, using MoviePy...")
-            return self._apply_social_effects_moviepy(video_path, output_path)
+            return self._apply_social_effects_moviepy(video_path, output_path, effect_style, effect_params)
     
-    def _apply_social_effects_moviepy(self, video_path: str, output_path: str) -> str:
+    def _apply_social_effects_moviepy(self, video_path: str, output_path: str, effect_style: str = None, effect_params: dict = None) -> str:
         """
         MoviePy implementation of social effects
+        
+        Args:
+            effect_style: Название эффекта или None для случайного
+            effect_params: Параметры эффекта или None для дефолтных
         """
         print("🎬 Using MoviePy for video processing...")
         logging.info("🎬 Starting MoviePy video processing...")
@@ -278,9 +303,13 @@ class VideoUniquizer:
         print(f"📹 Video info: {clip.w}x{clip.h} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
         logging.info(f"📹 Video info: {clip.w}x{clip.h} @ {fps}fps, {total_frames} frames ({duration:.1f}s)")
         
-        # Случайно выбираем стиль эффекта
-        effect_style = random.choice(list(self.social_effects.keys()))
-        effect_params = self.social_effects[effect_style]
+        # Выбираем стиль эффекта (используем переданный или случайный)
+        if effect_style is None:
+            effect_style = random.choice(list(self.social_effects.keys()))
+        
+        # Используем переданные параметры или дефолтные
+        if effect_params is None:
+            effect_params = self.social_effects.get(effect_style, self.social_effects['vintage'])
         
         print(f"🎨 Applying effect '{effect_style}': {effect_params}")
         logging.info(f"🎨 Applying effect '{effect_style}': {effect_params}")
@@ -333,9 +362,13 @@ class VideoUniquizer:
         
         return output_path
     
-    def _apply_social_effects_vidgear(self, video_path: str, output_path: str) -> str:
+    def _apply_social_effects_vidgear(self, video_path: str, output_path: str, effect_style: str = None, effect_params: dict = None) -> str:
         """
         VidGear implementation for social effects (faster than MoviePy)
+        
+        Args:
+            effect_style: Название эффекта или None для случайного
+            effect_params: Параметры эффекта или None для дефолтных
         """
         self._update_progress("🚀 Starting VidGear video processing (faster method)...")
         
@@ -364,9 +397,13 @@ class VideoUniquizer:
             "-movflags": "+faststart"
         }
         
-        # Случайно выбираем стиль эффекта
-        effect_style = random.choice(list(self.social_effects.keys()))
-        effect_params = self.social_effects[effect_style]
+        # Выбираем стиль эффекта (используем переданный или случайный)
+        if effect_style is None:
+            effect_style = random.choice(list(self.social_effects.keys()))
+        
+        # Используем переданные параметры или дефолтные
+        if effect_params is None:
+            effect_params = self.social_effects.get(effect_style, self.social_effects['vintage'])
         
         self._update_progress(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
@@ -536,7 +573,7 @@ class VideoUniquizer:
         return frame
     
     def uniquize_video(self, input_path: str, output_path: str, 
-                      effects: List[str] = None) -> str:
+                      effects: List[str] = None, params: dict = None) -> str:
         """
         Основной метод для уникализации видео с VidGear fallback
         
@@ -544,6 +581,7 @@ class VideoUniquizer:
             input_path: Путь к входному видео
             output_path: Путь для сохранения результата
             effects: Список эффектов для применения
+            params: Параметры для эффектов (speed, warmth, contrast и т.д.)
             
         Returns:
             Путь к обработанному видео
@@ -551,8 +589,12 @@ class VideoUniquizer:
         if effects is None:
             effects = ['temporal', 'social']  # Используем социальные эффекты вместо нейросетевых
         
+        if params is None:
+            params = {}
+        
         self._update_progress(f"🎬 Starting video uniquization: {input_path}")
         self._update_progress(f"🎨 Effects to apply: {effects}")
+        self._update_progress(f"⚙️ Parameters: {params}")
         
         # Получаем информацию о входном видео
         try:
@@ -579,7 +621,10 @@ class VideoUniquizer:
                 
                 if effect == 'temporal':
                     self._update_progress("⏱️ Applying temporal effects...")
-                    self.apply_temporal_effects(current_path, temp_path)
+                    # Извлекаем параметры скорости
+                    speed_factor = params.get('speed', None)
+                    trim_amount = params.get('trim', None)
+                    self.apply_temporal_effects(current_path, temp_path, speed_factor, trim_amount)
                 elif effect == 'visual':
                     self._update_progress("👁️ Applying visual effects...")
                     self.apply_visual_effects(current_path, temp_path)
@@ -588,7 +633,27 @@ class VideoUniquizer:
                     self.apply_neural_effects(current_path, temp_path)
                 elif effect == 'social':
                     self._update_progress("📱 Applying social effects...")
-                    self.apply_social_effects(current_path, temp_path)
+                    # Определяем стиль эффекта из параметров
+                    effect_style = None
+                    effect_params = {}
+                    
+                    # Определяем стиль по наличию специфичных параметров
+                    if 'warmth' in params or 'vignette' in params or 'grain' in params:
+                        effect_style = 'vintage'
+                    elif 'shadows' in params or 'highlights' in params:
+                        effect_style = 'dramatic'
+                    elif 'blur' in params:
+                        effect_style = 'soft'
+                    elif 'vibrance' in params or 'clarity' in params:
+                        effect_style = 'vibrant'
+                    
+                    # Копируем соответствующие параметры
+                    for key in ['warmth', 'vignette', 'grain', 'contrast', 'shadows', 'highlights', 
+                               'blur', 'brightness', 'saturation', 'vibrance', 'clarity']:
+                        if key in params:
+                            effect_params[key] = params[key]
+                    
+                    self.apply_social_effects(current_path, temp_path, effect_style, effect_params if effect_params else None)
                 
                 effect_time = time.time() - effect_start
                 self._update_progress(f"✅ {effect} effects completed in {effect_time:.1f}s")
