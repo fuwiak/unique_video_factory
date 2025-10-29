@@ -878,8 +878,11 @@ class TelegramVideoBot:
             await update.message.reply_text("❌ Сначала отправьте видео.")
             return
         
-        # Проверяем режим - обрабатываем только advanced mode
-        if user_states[user_id].get('mode') != 'advanced':
+        # Проверяем режим - обрабатываем только advanced mode и saving_to_yandex
+        mode = user_states[user_id].get('mode')
+        status = user_states[user_id].get('status')
+        
+        if mode != 'advanced' and status != 'saving_to_yandex':
             return  # Игнорируем текст в quick mode
         
         text = update.message.text.strip()
@@ -890,7 +893,8 @@ class TelegramVideoBot:
             await update.message.reply_text(
                 f"✅ ID ролика: **{text}**\n\n"
                 "👤 **Введите имя блогера:**\n"
-                "(например: Нина, Рэйчел, или новое имя)"
+                "(например: Нина, Рэйчел, или новое имя)",
+                parse_mode='Markdown'
             )
             return
         
@@ -900,7 +904,8 @@ class TelegramVideoBot:
             await update.message.reply_text(
                 f"✅ Имя блогера: **{text}**\n\n"
                 "📁 **Введите название папки:**\n"
-                "(например: clips, videos, content)"
+                "(например: clips, videos, content)",
+                parse_mode='Markdown'
             )
             return
         
@@ -911,13 +916,20 @@ class TelegramVideoBot:
             # Создаем структуру папок на Yandex Disk
             await self.create_yandex_folders(user_states[user_id]['blogger_name'], text)
             
-            await update.message.reply_text(
+            # Проверяем режим сохранения
+            if status == 'saving_to_yandex':
+                # Быстрый режим - сохраняем на Yandex Disk
+                await self.save_quick_result_to_yandex(update, user_id)
+            else:
+                # Расширенный режим - продолжаем workflow
+                await update.message.reply_text(
                 f"✅ Настройки сохранены:\n"
                 f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
                 f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
                 f"📁 Папка: **{text}**\n"
                 f"📂 Создана структура папок на Yandex Disk\n\n"
-                "🎬 Теперь выберите количество видео:"
+                    "🎬 Теперь выберите количество видео:",
+                    parse_mode='Markdown'
             )
             
             # Создаем клавиатуру для выбора количества видео
@@ -1755,21 +1767,38 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 )
                 
                 # Отправляем видео
-                with open(result_path, 'rb') as video_file:
-                    await query.message.reply_video(
-                        video=video_file,
-                        caption=f"✅ **Готово!**\n\n"
-                               f"🎨 Фильтр: {filter_info['name']}\n"
-                               f"📁 Размер: {file_size_mb:.1f} MB",
-                        supports_streaming=True,
-                        parse_mode='Markdown'
-                    )
+                sent_message = await query.message.reply_video(
+                    video=open(result_path, 'rb'),
+                    caption=f"✅ **Готово!**\n\n"
+                           f"🎨 Фильтр: {filter_info['name']}\n"
+                           f"📁 Размер: {file_size_mb:.1f} MB",
+                    supports_streaming=True,
+                    parse_mode='Markdown'
+                )
                 
-                # Удаляем временные файлы
-                if os.path.exists(input_path):
-                    os.remove(input_path)
-                if os.path.exists(result_path):
-                    os.remove(result_path)
+                # Сохраняем информацию для возможности загрузки на Yandex Disk
+                user_states[user_id]['quick_result'] = {
+                    'result_path': str(result_path),
+                    'input_path': str(input_path),
+                    'filter_name': filter_info['name'],
+                    'filter_id': filter_id,
+                    'file_size_mb': file_size_mb
+                }
+                
+                # Показываем кнопки с опциями
+                keyboard = [
+                    [InlineKeyboardButton("💾 Записать на Yandex Disk", callback_data=f"save_yandex_{filter_id}")],
+                    [InlineKeyboardButton("✅ Готово (удалить временные файлы)", callback_data="quick_done")]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.message.reply_text(
+                    "📋 **Что делать дальше?**\n\n"
+                    "• Записать на Yandex Disk с метаданными\n"
+                    "• Или завершить (временные файлы будут удалены)",
+                    reply_markup=reply_markup,
+                    parse_mode='Markdown'
+                )
                 
             else:
                 await query.edit_message_text(
@@ -1783,6 +1812,160 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 f"❌ **Ошибка обработки:**\n\n"
                 f"`{str(e)}`\n\n"
                 f"Попробуйте еще раз.",
+                parse_mode='Markdown'
+            )
+    
+    async def handle_save_to_yandex(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка сохранения на Yandex Disk из быстрого режима"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        if user_id not in user_states or 'quick_result' not in user_states[user_id]:
+            await query.edit_message_text("❌ Сессия истекла. Видео уже обработано.")
+            return
+        
+        quick_result = user_states[user_id]['quick_result']
+        
+        # Переходим в режим сбора метаданных
+        user_states[user_id]['status'] = 'saving_to_yandex'
+        user_states[user_id]['video_id'] = None
+        user_states[user_id]['blogger_name'] = None
+        user_states[user_id]['folder_name'] = None
+        
+        await query.edit_message_text(
+            "💾 **Сохранение на Yandex Disk**\n\n"
+            "Для сохранения нужны метаданные.\n\n"
+            "🆔 **Введите ID ролика:**\n"
+            "(например: 001, 002, 123)",
+            parse_mode='Markdown'
+        )
+    
+    async def handle_quick_done(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка завершения быстрого режима"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = query.from_user.id
+        
+        if user_id in user_states and 'quick_result' in user_states[user_id]:
+            quick_result = user_states[user_id]['quick_result']
+            
+            # Удаляем временные файлы
+            for path_key in ['result_path', 'input_path']:
+                if path_key in quick_result:
+                    path = quick_result[path_key]
+                    if os.path.exists(path):
+                        try:
+                            os.remove(path)
+                            logger.info(f"Удален временный файл: {path}")
+                        except Exception as e:
+                            logger.error(f"Ошибка удаления файла {path}: {e}")
+            
+            # Очищаем состояние
+            del user_states[user_id]['quick_result']
+        
+        await query.edit_message_text(
+            "✅ **Готово!**\n\n"
+            "Временные файлы удалены.\n\n"
+            "Отправьте новое видео для обработки.",
+            parse_mode='Markdown'
+        )
+    
+    async def save_quick_result_to_yandex(self, update: Update, user_id: int):
+        """Сохранение результата быстрого режима на Yandex Disk"""
+        try:
+            if 'quick_result' not in user_states[user_id]:
+                await update.message.reply_text("❌ Видео не найдено.")
+                return
+            
+            quick_result = user_states[user_id]['quick_result']
+            result_path = quick_result['result_path']
+            
+            if not os.path.exists(result_path):
+                await update.message.reply_text("❌ Файл не найден.")
+                return
+            
+            await update.message.reply_text(
+                "💾 **Сохраняю на Yandex Disk...**\n\n"
+                "⏳ Пожалуйста, подождите...",
+                parse_mode='Markdown'
+            )
+            
+            # Получаем метаданные
+            video_id = user_states[user_id]['video_id']
+            blogger_name = user_states[user_id]['blogger_name']
+            folder_name = user_states[user_id]['folder_name']
+            filter_name = quick_result['filter_name']
+            
+            # Создаем путь на Yandex Disk
+            upload_date = datetime.now().strftime('%Y%m%d')
+            filename = f"{upload_date}_{video_id}_quick.mp4"
+            
+            base_folder = "Медиабанк/Команда 1"
+            blogger_folder = f"{base_folder}/{blogger_name}"
+            content_folder = f"{blogger_folder}/{folder_name}"
+            videos_folder = f"{content_folder}/videos"
+            
+            # Загружаем на Yandex Disk
+            if self.yandex_disk:
+                # Создаем папки если не существуют
+                for folder in [videos_folder]:
+                    if not self.yandex_disk.exists(folder):
+                        self.yandex_disk.mkdir(folder)
+                
+                remote_path = f"{videos_folder}/{filename}"
+                
+                # Загружаем файл
+                self.yandex_disk.upload(result_path, remote_path)
+                logger.info(f"Файл загружен на Yandex Disk: {remote_path}")
+                
+                # Создаем публичную ссылку
+                try:
+                    self.yandex_disk.publish(remote_path)
+                    meta = self.yandex_disk.get_meta(remote_path)
+                    public_url = meta.get('public_url', '')
+                except Exception as e:
+                    logger.error(f"Ошибка создания публичной ссылки: {e}")
+                    public_url = ""
+                
+                await update.message.reply_text(
+                    f"✅ **Сохранено на Yandex Disk!**\n\n"
+                    f"📁 Путь: `{remote_path}`\n"
+                    f"🎨 Фильтр: {filter_name}\n"
+                    f"🆔 ID: {video_id}\n"
+                    f"👤 Блогер: {blogger_name}\n"
+                    f"📂 Папка: {folder_name}\n"
+                    + (f"🔗 Ссылка: {public_url}\n" if public_url else ""),
+                    parse_mode='Markdown'
+                )
+            else:
+                await update.message.reply_text(
+                    "⚠️ Yandex Disk не настроен.\n"
+                    "Видео сохранено локально.",
+                    parse_mode='Markdown'
+                )
+            
+            # Удаляем временные файлы
+            for path_key in ['result_path', 'input_path']:
+                if path_key in quick_result:
+                    path = quick_result[path_key]
+                    if os.path.exists(path):
+                        try:
+                            os.remove(path)
+                            logger.info(f"Удален временный файл: {path}")
+                        except Exception as e:
+                            logger.error(f"Ошибка удаления файла {path}: {e}")
+            
+            # Очищаем состояние
+            del user_states[user_id]['quick_result']
+            
+        except Exception as e:
+            logger.error(f"Ошибка сохранения на Yandex Disk: {e}")
+            await update.message.reply_text(
+                f"❌ **Ошибка сохранения:**\n\n"
+                f"`{str(e)}`",
                 parse_mode='Markdown'
             )
     
@@ -3954,6 +4137,8 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_quick_approval, pattern="^quick_(approve|reject)_"))
     application.add_handler(CallbackQueryHandler(bot.handle_parameter_adjustment, pattern="^adjust_"))
     application.add_handler(CallbackQueryHandler(bot.handle_set_value, pattern="^setvalue_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_save_to_yandex, pattern="^save_yandex_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_quick_done, pattern="^quick_done$"))
     
     # Запускаем бота
     print("🤖 Запускаем Telegram бота...")
