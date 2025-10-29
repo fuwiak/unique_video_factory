@@ -512,21 +512,262 @@ class TelegramVideoBot:
 
 Отправьте мне видео файл, и я создам уникальную версию с фильтрами Instagram!
 
-*Доступные команды:*
-/start - Начать работу
-/help - Помощь
-/filters - Показать доступные фильтры
-/status - Статус обработки
-
 *Как использовать:*
 1. Отправьте видео файл
-2. Выберите группу фильтров (разные скорости)
-3. Получите обработанные видео с разными эффектами
-4. Каждое видео будет с уникальным ID для аппрува
+2. Выберите режим работы (быстрый или расширенный)
+3. Выберите фильтр
+4. Получите обработанное видео!
         """
+        
+        # Создаем расширенное меню с кнопками
+        keyboard = [
+            [InlineKeyboardButton("📤 Отправить видео", callback_data="menu_send_video")],
+            [InlineKeyboardButton("⚙️ Настройки", callback_data="menu_settings")],
+            [InlineKeyboardButton("🎨 Фильтры", callback_data="menu_filters")],
+            [InlineKeyboardButton("📊 Статус", callback_data="menu_status")],
+            [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")],
+            [InlineKeyboardButton("🔄 Сброс настроек", callback_data="menu_reset")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
             welcome_text, 
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
+    async def menu_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Команда /menu - расширенное меню"""
+        user_id = update.effective_user.id
+        
+        menu_text = """
+📋 **ГЛАВНОЕ МЕНЮ**
+
+Выберите действие:
+        """
+        
+        # Создаем расширенное меню с кнопками
+        keyboard = [
+            [InlineKeyboardButton("📤 Отправить видео", callback_data="menu_send_video")],
+            [InlineKeyboardButton("⚙️ Настройки", callback_data="menu_settings")],
+            [InlineKeyboardButton("🎨 Показать фильтры", callback_data="menu_filters")],
+            [InlineKeyboardButton("📊 Статус обработки", callback_data="menu_status")],
+            [InlineKeyboardButton("👤 Карта блогера", callback_data="menu_blogger")],
+            [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")],
+            [InlineKeyboardButton("🔄 Сброс настроек", callback_data="menu_reset")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            menu_text,
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+    
+    async def handle_menu_action(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Обработка действий из расширенного меню"""
+        query = update.callback_query
+        await query.answer()
+        
+        action = query.data.replace('menu_', '')
+        
+        if action == 'send_video':
+            await query.edit_message_text(
+                "📤 **Отправьте видео**\n\n"
+                "Отправьте видео файл (MP4, MOV, AVI и др.) для обработки.\n\n"
+                "💡 После отправки вы сможете выбрать режим работы.",
+                parse_mode='Markdown'
+            )
+        elif action == 'settings':
+            # Показываем меню настроек
+            user_id = query.from_user.id
+            if user_id not in user_custom_params:
+                user_custom_params[user_id] = {}
+            
+            keyboard = [
+                [InlineKeyboardButton("⚡ Скорость (Speed)", callback_data="adjust_speed")],
+                [InlineKeyboardButton("✂️ Обрезка (Trim)", callback_data="adjust_trim")],
+                [InlineKeyboardButton("🔆 Яркость (Brightness)", callback_data="adjust_brightness")],
+                [InlineKeyboardButton("🎨 Контраст (Contrast)", callback_data="adjust_contrast")],
+                [InlineKeyboardButton("🌈 Насыщенность (Saturation)", callback_data="adjust_saturation")],
+                [InlineKeyboardButton("🔥 Теплота (Warmth)", callback_data="adjust_warmth")],
+                [InlineKeyboardButton("🌫️ Размытие (Blur)", callback_data="adjust_blur")],
+                [InlineKeyboardButton("🔄 Сбросить все", callback_data="adjust_reset")],
+                [InlineKeyboardButton("« Назад в меню", callback_data="menu_back")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            current_settings = user_custom_params.get(user_id, {})
+            if current_settings:
+                settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+                settings_text += "**Текущие значения:**\n"
+                for param, value in current_settings.items():
+                    settings_text += f"• {param}: **{value}**\n"
+                settings_text += "\n📝 Выберите параметр для изменения:"
+            else:
+                settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+                settings_text += "🎯 Используются стандартные значения\n\n"
+                settings_text += "📝 Выберите параметр для настройки:"
+            
+            await query.edit_message_text(
+                settings_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'filters':
+            # Показываем фильтры
+            filters_text = "🎨 *Доступные фильтры Instagram:*\n\n"
+            
+            for filter_id, filter_info in INSTAGRAM_FILTERS.items():
+                filters_text += f"*{filter_info['name']}*\n"
+                filters_text += f"_{filter_info['description']}_\n\n"
+            
+            keyboard = [[InlineKeyboardButton("« Назад в меню", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                filters_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'status':
+            # Показываем статус
+            user_id = query.from_user.id
+            status = user_states.get(user_id, {})
+            
+            if status:
+                status_text = "📊 **СТАТУС ОБРАБОТКИ**\n\n"
+                status_text += f"**Текущий статус:** {status.get('status', 'нет активной обработки')}\n\n"
+                
+                if 'filter' in status:
+                    status_text += f"**Фильтр:** {status['filter']}\n"
+                if 'blogger_name' in status:
+                    status_text += f"**Блогер:** {status['blogger_name']}\n"
+                if 'folder_name' in status:
+                    status_text += f"**Папка:** {status['folder_name']}\n"
+                if 'video_id' in status:
+                    status_text += f"**ID ролика:** {status['video_id']}\n"
+            else:
+                status_text = "📊 **СТАТУС ОБРАБОТКИ**\n\n"
+                status_text += "✅ Нет активной обработки\n\n"
+                status_text += "💡 Отправьте видео, чтобы начать работу."
+            
+            keyboard = [[InlineKeyboardButton("« Назад в меню", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                status_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'blogger':
+            # Запускаем команду blogger
+            user_id = query.from_user.id
+            blogger_states[user_id] = {
+                'status': 'waiting_for_name',
+                'blogger_name': None,
+                'links': []
+            }
+            
+            keyboard = [[InlineKeyboardButton("« Назад в меню", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "👤 **Создание карты блогера**\n\n"
+                "Введите имя блогера (например: Лиза):",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'help':
+            # Показываем справку
+            help_text = """
+🆘 *Помощь по использованию бота*
+
+*Поддерживаемые форматы:*
+• MP4, AVI, MOV, MKV и другие
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎬 *ДВА РЕЖИМА РАБОТЫ:*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+*⚡ БЫСТРЫЙ РЕЖИМ:*
+1. Отправьте видео
+2. Нажмите "⚡ Быстрый фильтр"
+3. Выберите фильтр
+4. Получите обработанное видео!
+
+*📦 РАСШИРЕННЫЙ РЕЖИМ:*
+1. Отправьте видео
+2. Нажмите "📦 Создать варианты"
+3. Введите метаданные
+4. Выберите фильтры
+5. Получите несколько вариантов
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️ *КОМАНДЫ:*
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+• /menu - Главное меню
+• /settings - Настройки параметров
+• /filters - Показать фильтры
+• /status - Статус обработки
+• /blogger - Карта блогера
+• /help - Эта справка
+            """
+            
+            keyboard = [[InlineKeyboardButton("« Назад в меню", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                help_text,
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'reset':
+            # Сбрасываем все настройки
+            user_id = query.from_user.id
+            
+            # Очищаем настройки параметров
+            if user_id in user_custom_params:
+                del user_custom_params[user_id]
+            
+            # Очищаем состояние пользователя
+            if user_id in user_states:
+                del user_states[user_id]
+            
+            keyboard = [[InlineKeyboardButton("« Назад в меню", callback_data="menu_back")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                "🔄 **Настройки сброшены!**\n\n"
+                "✅ Все пользовательские настройки удалены\n"
+                "✅ Текущая сессия очищена\n\n"
+                "💡 Теперь используются стандартные значения.",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        elif action == 'back':
+            # Возвращаемся в главное меню
+            menu_text = """
+📋 **ГЛАВНОЕ МЕНЮ**
+
+Выберите действие:
+            """
+            
+            keyboard = [
+                [InlineKeyboardButton("📤 Отправить видео", callback_data="menu_send_video")],
+                [InlineKeyboardButton("⚙️ Настройки", callback_data="menu_settings")],
+                [InlineKeyboardButton("🎨 Показать фильтры", callback_data="menu_filters")],
+                [InlineKeyboardButton("📊 Статус обработки", callback_data="menu_status")],
+                [InlineKeyboardButton("👤 Карта блогера", callback_data="menu_blogger")],
+                [InlineKeyboardButton("❓ Помощь", callback_data="menu_help")],
+                [InlineKeyboardButton("🔄 Сброс настроек", callback_data="menu_reset")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                menu_text,
+                reply_markup=reply_markup,
             parse_mode='Markdown'
         )
     
@@ -579,6 +820,7 @@ class TelegramVideoBot:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 *Для всех:*
+• /menu - главное меню с кнопками
 • /settings - настроить параметры фильтров
 • /filters - показать все фильтры
 • /status - статус обработки
@@ -769,7 +1011,7 @@ class TelegramVideoBot:
         try:
             success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
             if success:
-                await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+            await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
             else:
                 await update.message.reply_text(error_msg, parse_mode='Markdown')
         except Exception as e:
@@ -1334,11 +1576,11 @@ class TelegramVideoBot:
                     parse_mode='Markdown'
                 )
             else:
-                await update.message.reply_text(
-                    f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
-                    f"📅 Дата публикации: {publish_date}\n"
-                    f"🆔 ID сценария: {scenario_id}\n"
-                    f"📝 Описание: {description}"
+            await update.message.reply_text(
+                f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
+                f"📅 Дата публикации: {publish_date}\n"
+                f"🆔 ID сценария: {scenario_id}\n"
+                f"📝 Описание: {description}"
             )
             
         except Exception as e:
@@ -1522,9 +1764,9 @@ class TelegramVideoBot:
             
             # Создаем папку approved, если не существует
             try:
-                if not self.yandex_disk.exists(approved_folder):
-                    self.yandex_disk.mkdir(approved_folder)
-                    logger.info(f"Создана папка approved: {approved_folder}")
+            if not self.yandex_disk.exists(approved_folder):
+                self.yandex_disk.mkdir(approved_folder)
+                logger.info(f"Создана папка approved: {approved_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку approved: {str(e)}"
                 logger.error(error_msg)
@@ -1533,9 +1775,9 @@ class TelegramVideoBot:
             # Создаем подпапку для конкретного видео
             video_folder = f"{approved_folder}/{approval_id}"
             try:
-                if not self.yandex_disk.exists(video_folder):
-                    self.yandex_disk.mkdir(video_folder)
-                    logger.info(f"Создана папка видео: {video_folder}")
+            if not self.yandex_disk.exists(video_folder):
+                self.yandex_disk.mkdir(video_folder)
+                logger.info(f"Создана папка видео: {video_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку видео: {str(e)}"
                 logger.error(error_msg)
@@ -1579,8 +1821,8 @@ class TelegramVideoBot:
                 try:
                     # Сначала копируем файл (с обработкой дубликатов)
                     try:
-                        self.yandex_disk.copy(source_remote_path, approved_path)
-                        logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
+                    self.yandex_disk.copy(source_remote_path, approved_path)
+                    logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
                     except Exception as copy_error:
                         error_str = str(copy_error)
                         # Если файл уже существует, используем уникальное имя
@@ -1601,8 +1843,8 @@ class TelegramVideoBot:
                     
                     # Затем удаляем исходный файл
                     try:
-                        self.yandex_disk.remove(source_remote_path)
-                        logger.info(f"Исходный файл удален: {source_remote_path}")
+                    self.yandex_disk.remove(source_remote_path)
+                    logger.info(f"Исходный файл удален: {source_remote_path}")
                     except Exception as remove_error:
                         logger.warning(f"Не удалось удалить исходный файл: {remove_error}")
                         # Это не критично - продолжаем
@@ -1615,8 +1857,8 @@ class TelegramVideoBot:
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
                         try:
-                            self.yandex_disk.upload(source_path, approved_path)
-                            logger.info(f"Файл загружен локально: {source_path}")
+                        self.yandex_disk.upload(source_path, approved_path)
+                        logger.info(f"Файл загружен локально: {source_path}")
                         except Exception as upload_error:
                             # Переводим ошибку в понятное сообщение
                             error_msg = self.translate_yandex_error(upload_error)
@@ -1633,8 +1875,8 @@ class TelegramVideoBot:
                 if source_path and os.path.exists(source_path):
                     approved_path = f"{video_folder}/video.mp4"
                     try:
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
+                    self.yandex_disk.upload(source_path, approved_path)
+                    logger.info(f"Файл загружен локально: {source_path}")
                     except Exception as upload_error:
                         # Переводим ошибку в понятное сообщение
                         error_msg = self.translate_yandex_error(upload_error)
@@ -3064,7 +3306,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             # Throttle updates - не чаще чем раз в 2 секунды
                             current_time = time.time()
                             if current_time - last_update_time[0] < 2.0:
-                                print(f"📊 {message}")
+                            print(f"📊 {message}")
                                 return
                             last_update_time[0] = current_time
                             
@@ -4231,7 +4473,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Загружаем файл (с обработкой дубликатов)
             logger.info(f"⬆️ Загружаю файл на Yandex Disk: {remote_path}")
             try:
-                self.yandex_disk.upload(file_path, remote_path)
+            self.yandex_disk.upload(file_path, remote_path)
             except Exception as upload_error:
                 error_str = str(upload_error)
                 # Если файл уже существует, используем уникальное имя
@@ -4257,10 +4499,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Создаем публичную ссылку
             try:
-                public_url = self.yandex_disk.get_download_link(remote_path)
-                logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
-                logger.info(f"🔗 Публичная ссылка: {public_url}")
-                return public_url, remote_path
+            public_url = self.yandex_disk.get_download_link(remote_path)
+            logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
+            logger.info(f"🔗 Публичная ссылка: {public_url}")
+            return public_url, remote_path
             except Exception as link_error:
                 logger.error(f"Ошибка создания публичной ссылки: {link_error}")
                 return remote_path, remote_path  # Возвращаем путь даже без ссылки
@@ -4574,6 +4816,7 @@ def main():
     
     # Добавляем обработчики
     application.add_handler(CommandHandler("start", bot.start_command))
+    application.add_handler(CommandHandler("menu", bot.menu_command))
     application.add_handler(CommandHandler("help", bot.help_command))
     application.add_handler(CommandHandler("blogger", bot.blogger_command))
     application.add_handler(CommandHandler("filters", bot.filters_command))
@@ -4607,6 +4850,7 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_save_to_yandex, pattern="^save_yandex_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_done, pattern="^quick_done$"))
     application.add_handler(CallbackQueryHandler(bot.handle_restart, pattern="^restart$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_menu_action, pattern="^menu_"))
     
     # Запускаем бота
     print("🤖 Запускаем Telegram бота...")
