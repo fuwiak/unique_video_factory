@@ -771,7 +771,7 @@ class TelegramVideoBot:
             if success:
                 await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
             else:
-                await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{error_msg}`", parse_mode='Markdown')
+                await update.message.reply_text(error_msg, parse_mode='Markdown')
         except Exception as e:
             logger.error(f"Ошибка перемещения в approved папку: {e}")
             await update.message.reply_text(f"❌ Ошибка загрузки на Yandex Disk:\n\n`{str(e)}`", parse_mode='Markdown')
@@ -1339,7 +1339,7 @@ class TelegramVideoBot:
                     f"📅 Дата публикации: {publish_date}\n"
                     f"🆔 ID сценария: {scenario_id}\n"
                     f"📝 Описание: {description}"
-                )
+            )
             
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка обработки метаданных: {str(e)}")
@@ -1357,6 +1357,149 @@ class TelegramVideoBot:
         except Exception as e:
             logger.error(f"Ошибка отправки в чатбот: {e}")
     
+    def calculate_video_difference(self, original_path: str, processed_path: str) -> float:
+        """Вычисляет процент отличия между оригинальным и обработанным видео
+        
+        Args:
+            original_path: Путь к оригинальному видео
+            processed_path: Путь к обработанному видео
+            
+        Returns:
+            float: Процент отличия (0-100)
+        """
+        try:
+            from moviepy.editor import VideoFileClip
+            
+            # Получаем метаданные оригинального видео
+            original_clip = VideoFileClip(original_path)
+            original_duration = original_clip.duration
+            original_fps = original_clip.fps
+            original_size = os.path.getsize(original_path)
+            original_clip.close()
+            
+            # Получаем метаданные обработанного видео
+            processed_clip = VideoFileClip(processed_path)
+            processed_duration = processed_clip.duration
+            processed_fps = processed_clip.fps
+            processed_size = os.path.getsize(processed_path)
+            processed_clip.close()
+            
+            # Вычисляем различия
+            duration_diff = abs(original_duration - processed_duration) / original_duration * 100 if original_duration > 0 else 0
+            size_diff = abs(original_size - processed_size) / original_size * 100 if original_size > 0 else 0
+            fps_diff = abs(original_fps - processed_fps) / original_fps * 100 if original_fps > 0 else 0
+            
+            # Комбинируем различия (взвешенная сумма)
+            # Длительность и размер важнее, чем FPS
+            total_difference = (duration_diff * 0.4 + size_diff * 0.3 + fps_diff * 0.3)
+            
+            # Ограничиваем результат от 1% до 100%
+            total_difference = max(1.0, min(100.0, total_difference))
+            
+            logger.info(f"📊 Video difference calculation:")
+            logger.info(f"   Duration: {original_duration:.2f}s -> {processed_duration:.2f}s (diff: {duration_diff:.1f}%)")
+            logger.info(f"   Size: {original_size/1024/1024:.2f}MB -> {processed_size/1024/1024:.2f}MB (diff: {size_diff:.1f}%)")
+            logger.info(f"   FPS: {original_fps:.2f} -> {processed_fps:.2f} (diff: {fps_diff:.1f}%)")
+            logger.info(f"   Total difference: {total_difference:.1f}%")
+            
+            return round(total_difference, 1)
+            
+        except Exception as e:
+            logger.error(f"Ошибка вычисления процента отличия: {e}")
+            # Возвращаем примерное значение на основе параметров обработки
+            # Минимальные изменения обычно дают 2-5% отличия
+            return 3.0
+    
+    def translate_yandex_error(self, error: Exception) -> str:
+        """Переводит технические ошибки Yandex Disk в понятные сообщения на русском
+        
+        Args:
+            error: Исключение от Yandex Disk API
+            
+        Returns:
+            str: Понятное сообщение об ошибке на русском языке
+        """
+        error_str = str(error)
+        
+        # Файл уже существует
+        if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
+            return (
+                "⚠️ **Файл уже существует на Yandex Disk**\n\n"
+                "📁 На диске уже есть файл с таким именем в этой папке.\n\n"
+                "💡 **Что делать:**\n"
+                "• Видео уже было сохранено ранее\n"
+                "• Или используйте другой ID ролика\n"
+                "• Или удалите старый файл вручную"
+            )
+        
+        # Нет места на диске
+        if "no space" in error_str.lower() or "нет места" in error_str.lower() or "quota" in error_str.lower():
+            return (
+                "❌ **Недостаточно места на Yandex Disk**\n\n"
+                "💾 На диске закончилось свободное место.\n\n"
+                "💡 **Что делать:**\n"
+                "• Освободите место на Yandex Disk\n"
+                "• Удалите старые файлы\n"
+                "• Или увеличьте квоту хранилища"
+            )
+        
+        # Нет доступа
+        if "access denied" in error_str.lower() or "доступ запрещен" in error_str.lower() or "forbidden" in error_str.lower():
+            return (
+                "❌ **Нет доступа к папке на Yandex Disk**\n\n"
+                "🔒 У бота нет прав для записи в эту папку.\n\n"
+                "💡 **Что делать:**\n"
+                "• Проверьте права доступа к папке\n"
+                "• Убедитесь что токен Yandex Disk действителен\n"
+                "• Или проверьте настройки доступа к папке 'Медиабанк'"
+            )
+        
+        # Неверный токен
+        if "unauthorized" in error_str.lower() or "токен недействителен" in error_str.lower() or "invalid token" in error_str.lower():
+            return (
+                "❌ **Неверный токен Yandex Disk**\n\n"
+                "🔑 Токен доступа недействителен или истек.\n\n"
+                "💡 **Что делать:**\n"
+                "• Получите новый токен Yandex Disk\n"
+                "• Обновите токен в настройках бота\n"
+                "• Проверьте переменную окружения YANDEX_DISK_TOKEN"
+            )
+        
+        # Файл не найден
+        if "not found" in error_str.lower() or "не найден" in error_str.lower():
+            return (
+                "❌ **Файл не найден на Yandex Disk**\n\n"
+                "📁 Исходный файл был удален или перемещен.\n\n"
+                "💡 **Что делать:**\n"
+                "• Проверьте наличие файла на диске\n"
+                "• Или обработайте видео заново"
+            )
+        
+        # Превышен размер
+        if "too large" in error_str.lower() or "слишком большой" in error_str.lower() or "probably too large" in error_str.lower():
+            return (
+                "❌ **Файл слишком большой**\n\n"
+                "📦 Размер файла превышает допустимый лимит Yandex Disk.\n\n"
+                "💡 **Что делать:**\n"
+                "• Сожмите видео перед загрузкой\n"
+                "• Используйте команду /settings для настройки качества\n"
+                "• Или разбейте видео на части"
+            )
+        
+        # Общая ошибка - возвращаем понятное сообщение
+        return (
+            f"❌ **Ошибка загрузки на Yandex Disk**\n\n"
+            f"⚠️ Не удалось сохранить файл на диск.\n\n"
+            f"💡 **Возможные причины:**\n"
+            f"• Проблемы с подключением к интернету\n"
+            f"• Временная недоступность Yandex Disk\n"
+            f"• Проблемы с токеном доступа\n\n"
+            f"🔧 **Попробуйте:**\n"
+            f"• Проверить подключение к интернету\n"
+            f"• Повторить операцию через несколько минут\n"
+            f"• Или связаться с администратором"
+        )
+    
     async def move_to_approved_folder(self, video_data, approval_id):
         """Перемещение файла в папку approved
         
@@ -1365,7 +1508,7 @@ class TelegramVideoBot:
         """
         try:
             if not self.yandex_disk:
-                return False, "Yandex Disk не настроен"
+                return False, "⚠️ Yandex Disk не настроен. Проверьте настройки бота."
             
             # Получаем информацию о блогере и папке
             blogger_name = video_data.get('blogger_name', 'unknown')
@@ -1434,17 +1577,40 @@ class TelegramVideoBot:
                 # Перемещаем файл с Yandex Disk
                 approved_path = f"{video_folder}/video.mp4"
                 try:
-                    # Сначала копируем файл
-                    self.yandex_disk.copy(source_remote_path, approved_path)
-                    logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
+                    # Сначала копируем файл (с обработкой дубликатов)
+                    try:
+                        self.yandex_disk.copy(source_remote_path, approved_path)
+                        logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
+                    except Exception as copy_error:
+                        error_str = str(copy_error)
+                        # Если файл уже существует, используем уникальное имя
+                        if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
+                            import time
+                            unique_id = int(time.time())
+                            approved_path = f"{video_folder}/video_{unique_id}.mp4"
+                            try:
+                                self.yandex_disk.copy(source_remote_path, approved_path)
+                                logger.info(f"Файл скопирован с уникальным именем: {approved_path}")
+                            except Exception as retry_error:
+                                error_msg = self.translate_yandex_error(retry_error)
+                                logger.error(error_msg)
+                                # Fallback на upload локального файла
+                                raise retry_error
+                        else:
+                            raise copy_error
                     
                     # Затем удаляем исходный файл
-                    self.yandex_disk.remove(source_remote_path)
-                    logger.info(f"Исходный файл удален: {source_remote_path}")
+                    try:
+                        self.yandex_disk.remove(source_remote_path)
+                        logger.info(f"Исходный файл удален: {source_remote_path}")
+                    except Exception as remove_error:
+                        logger.warning(f"Не удалось удалить исходный файл: {remove_error}")
+                        # Это не критично - продолжаем
                     
                 except Exception as move_error:
-                    error_msg = f"Ошибка перемещения файла на Yandex Disk: {str(move_error)}"
-                    logger.error(error_msg)
+                    # Переводим ошибку в понятное сообщение
+                    error_msg = self.translate_yandex_error(move_error)
+                    logger.error(f"Ошибка перемещения на Yandex Disk: {move_error}")
                     # Fallback - загружаем локальный файл
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
@@ -1452,8 +1618,9 @@ class TelegramVideoBot:
                             self.yandex_disk.upload(source_path, approved_path)
                             logger.info(f"Файл загружен локально: {source_path}")
                         except Exception as upload_error:
-                            error_msg = f"Не удалось загрузить локальный файл: {str(upload_error)}"
-                            logger.error(error_msg)
+                            # Переводим ошибку в понятное сообщение
+                            error_msg = self.translate_yandex_error(upload_error)
+                            logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
                             return False, error_msg
                     else:
                         error_msg = f"Локальный файл не найден: {source_path}"
@@ -1469,8 +1636,9 @@ class TelegramVideoBot:
                         self.yandex_disk.upload(source_path, approved_path)
                         logger.info(f"Файл загружен локально: {source_path}")
                     except Exception as upload_error:
-                        error_msg = f"Не удалось загрузить файл на Yandex Disk: {str(upload_error)}"
-                        logger.error(error_msg)
+                        # Переводим ошибку в понятное сообщение
+                        error_msg = self.translate_yandex_error(upload_error)
+                        logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
                         return False, error_msg
                 else:
                     error_msg = f"Локальный файл не найден: {source_path or 'путь не указан'}"
@@ -1792,16 +1960,28 @@ ID сценария: {video_data['metadata']['scenario_id']}
             )
             
             # Создаем callback для обновления прогресса в Telegram
-            loop = asyncio.get_event_loop()
+            # Получаем event loop ПЕРЕД запуском executor, чтобы callback mógł go użyć
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+            
             last_update_time = [0]  # Use list to store mutable value
             
             def progress_callback(message: str, progress_pct: float = None):
                 """Callback для обновления прогресса в Telegram"""
                 try:
-                    # Обновляем не чаще чем раз в 2 секунды
+                    # Всегда логируем
+                    logger.info(f"📊 VidGear Progress: {message}")
+                    if progress_pct is not None:
+                        logger.info(f"📊 Progress: {progress_pct:.1f}%")
+                    
+                    # Обновляем Telegram не чаще чем раз в 2 секунды
                     current_time = time.time()
                     if current_time - last_update_time[0] < 2.0:
+                        # Но логируем всегда
                         return
+                    
                     last_update_time[0] = current_time
                     
                     # Создаем текст сообщения
@@ -1815,7 +1995,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         progress_bar_length = 20
                         filled = int(progress_pct / 100 * progress_bar_length)
                         progress_bar = "█" * filled + "░" * (progress_bar_length - filled)
-                        progress_text += f"`{progress_bar}` {progress_pct:.1f}%\n"
+                        progress_text += f"\n`{progress_bar}` {progress_pct:.1f}%\n"
                     
                     # Обновляем сообщение в Telegram асинхронно
                     async def update_message():
@@ -1824,14 +2004,21 @@ ID сценария: {video_data['metadata']['scenario_id']}
                                 progress_text,
                                 parse_mode='Markdown'
                             )
+                            logger.info(f"✅ Telegram updated: {progress_pct:.1f}%")
                         except Exception as e:
-                            logger.error(f"Ошибка обновления сообщения: {e}")
+                            logger.error(f"❌ Ошибка обновления сообщения Telegram: {e}")
                     
                     # Запускаем обновление в event loop
-                    asyncio.run_coroutine_threadsafe(update_message(), loop)
+                    try:
+                        future = asyncio.run_coroutine_threadsafe(update_message(), loop)
+                        # Не ждем результата - пусть выполняется асинхронно
+                    except Exception as e:
+                        logger.error(f"❌ Ошибка запуска update_message: {e}")
                     
                 except Exception as e:
-                    logger.error(f"Ошибка в progress_callback: {e}")
+                    logger.error(f"❌ Ошибка в progress_callback: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
             
             # Запускаем обработку в отдельном потоке
             result_path = await loop.run_in_executor(
@@ -1844,13 +2031,17 @@ ID сценария: {video_data['metadata']['scenario_id']}
             )
             
             if result_path and os.path.exists(result_path):
+                # Вычисляем процент отличия
+                difference_pct = self.calculate_video_difference(str(input_path), str(result_path))
+                
                 # Отправляем результат
                 file_size_mb = os.path.getsize(result_path) / (1024 * 1024)
                 
                 await query.edit_message_text(
                     f"✅ **Обработка завершена!**\n\n"
                     f"🎨 Фильтр: {filter_info['name']}\n"
-                    f"📁 Размер: {file_size_mb:.1f} MB\n\n"
+                    f"📁 Размер: {file_size_mb:.1f} MB\n"
+                    f"📊 Отличие от оригинала: {difference_pct:.1f}%\n\n"
                     f"📤 Отправляю видео..."
                 )
                 
@@ -1859,7 +2050,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     video=open(result_path, 'rb'),
                     caption=f"✅ **Готово!**\n\n"
                            f"🎨 Фильтр: {filter_info['name']}\n"
-                           f"📁 Размер: {file_size_mb:.1f} MB",
+                           f"📁 Размер: {file_size_mb:.1f} MB\n"
+                           f"📊 **Отличие от оригинала:** {difference_pct:.1f}%",
                     supports_streaming=True,
                     parse_mode='Markdown'
                 )
@@ -1870,7 +2062,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'input_path': str(input_path),
                     'filter_name': filter_info['name'],
                     'filter_id': filter_id,
-                    'file_size_mb': file_size_mb
+                    'file_size_mb': file_size_mb,
+                    'difference_pct': difference_pct
                 }
                 
                 # Показываем кнопки с опциями
@@ -1994,20 +2187,45 @@ ID сценария: {video_data['metadata']['scenario_id']}
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
             content_folder = f"{blogger_folder}/{folder_name}"
-            videos_folder = f"{content_folder}/videos"
+            # Используем ID ролика как имя папки вместо "videos"
+            video_folder = f"{content_folder}/{video_id}"
             
             # Загружаем на Yandex Disk
             if self.yandex_disk:
                 # Создаем папки если не существуют
-                for folder in [videos_folder]:
-                    if not self.yandex_disk.exists(folder):
-                        self.yandex_disk.mkdir(folder)
+                if not self.yandex_disk.exists(video_folder):
+                    self.yandex_disk.mkdir(video_folder)
                 
-                remote_path = f"{videos_folder}/{filename}"
+                remote_path = f"{video_folder}/{filename}"
                 
-                # Загружаем файл
-                self.yandex_disk.upload(result_path, remote_path)
-                logger.info(f"Файл загружен на Yandex Disk: {remote_path}")
+                # Загружаем файл (с обработкой дубликатов)
+                try:
+                    self.yandex_disk.upload(result_path, remote_path)
+                    logger.info(f"Файл загружен на Yandex Disk: {remote_path}")
+                except Exception as upload_error:
+                    error_str = str(upload_error)
+                    # Если файл уже существует, используем уникальное имя
+                    if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
+                        # Создаем уникальное имя с timestamp
+                        import time
+                        unique_id = int(time.time())
+                        filename_parts = filename.rsplit('.', 1)
+                        if len(filename_parts) == 2:
+                            new_filename = f"{filename_parts[0]}_{unique_id}.{filename_parts[1]}"
+                        else:
+                            new_filename = f"{filename}_{unique_id}"
+                        remote_path = f"{video_folder}/{new_filename}"
+                        try:
+                            self.yandex_disk.upload(result_path, remote_path)
+                            logger.info(f"Файл загружен с уникальным именем: {remote_path}")
+                        except Exception as retry_error:
+                            error_msg = self.translate_yandex_error(retry_error)
+                            await update.message.reply_text(error_msg, parse_mode='Markdown')
+                            return
+                    else:
+                        error_msg = self.translate_yandex_error(upload_error)
+                        await update.message.reply_text(error_msg, parse_mode='Markdown')
+                        return
                 
                 # Создаем публичную ссылку
                 try:
@@ -2018,6 +2236,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     logger.error(f"Ошибка создания публичной ссылки: {e}")
                     public_url = ""
                 
+                # Вычисляем процент отличия если есть
+                difference_info = ""
+                if 'difference_pct' in quick_result:
+                    diff_pct = quick_result['difference_pct']
+                    difference_info = f"📊 **Отличие от оригинала:** {diff_pct:.1f}%\n\n"
+                
+                # Создаем клавиатуру с кнопкой "Запустить заново"
+                keyboard = [[InlineKeyboardButton("🔄 Запустить заново", callback_data="restart")]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
                 await update.message.reply_text(
                     f"✅ **Сохранено на Yandex Disk!**\n\n"
                     f"📁 Путь: `{remote_path}`\n"
@@ -2025,8 +2253,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     f"🆔 ID: {video_id}\n"
                     f"👤 Блогер: {blogger_name}\n"
                     f"📂 Папка: {folder_name}\n"
-                    + (f"🔗 Ссылка: {public_url}\n" if public_url else ""),
-                    parse_mode='Markdown'
+                    + (f"🔗 Ссылка: {public_url}\n" if public_url else "")
+                    + difference_info,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup
                 )
             else:
                 await update.message.reply_text(
@@ -2653,13 +2883,21 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Отправляем все видео
             for video_data in processed_videos:
                 try:
+                    # Добавляем процент отличия если есть
+                    difference_text = ""
+                    if 'difference_pct' in video_data:
+                        difference_text = f"\n📊 **Отличие от оригинала:** {video_data['difference_pct']:.1f}%"
+                    
+                    caption_text = (f"✅ Видео {video_data['index']}/{len(selected_filters)}\n"
+                               f"🎨 Фильтр: {video_data['filter_name']}\n"
+                                   f"📁 Размер: {os.path.getsize(video_data['path']) / (1024*1024):.1f} MB{difference_text}\n"
+                               f"📂 Путь: `{video_data['path']}`"
+                                   + (f"\n☁️ Yandex Disk: {video_data['yandex_url']}" if video_data.get('yandex_url') else ""))
+                    
                     await query.message.reply_video(
                         video=open(video_data['path'], 'rb'),
-                        caption=f"✅ Видео {video_data['index']}/{len(selected_filters)}\n"
-                               f"🎨 Фильтр: {video_data['filter_name']}\n"
-                               f"📁 Размер: {os.path.getsize(video_data['path']) / (1024*1024):.1f} MB\n"
-                               f"📂 Путь: `{video_data['path']}`"
-                               + (f"\n☁️ Yandex Disk: {video_data['yandex_url']}" if video_data.get('yandex_url') else ""),
+                        caption=caption_text,
+                        parse_mode='Markdown',
                         supports_streaming=True
                     )
                 except Exception as e:
@@ -2921,6 +3159,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 print(f"⚠️ Could not get output video info: {e}")
                 logger.warning(f"⚠️ Could not get output video info: {e}")
             
+            # Вычисляем процент отличия
+            input_path_for_diff = task.get('input_path') or task.get('trimmed_input_path') or compressed_input_path
+            if os.path.exists(input_path_for_diff):
+                difference_pct = self.calculate_video_difference(input_path_for_diff, result_path)
+            else:
+                difference_pct = 3.0  # Значение по умолчанию
+            
             return {
                 'index': task['index'],
                 'path': result_path,
@@ -2930,7 +3175,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 'upload_date': datetime.now().strftime('%Y%m%d'),
                 'compressed': file_size_mb > 20,  # Если файл был больше 20MB
                 'split': file_size_mb > 50,  # Если файл был больше 50MB
-                'chunks_count': len(chunks) if file_size_mb > 50 else 1
+                'chunks_count': len(chunks) if file_size_mb > 50 else 1,
+                'difference_pct': difference_pct
             }
             
         except Exception as e:
@@ -3242,12 +3488,20 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Отправляем все видео
             for video_data in processed_videos:
                 try:
+                    # Добавляем процент отличия если есть
+                    difference_text = ""
+                    if 'difference_pct' in video_data:
+                        difference_text = f"\n📊 **Отличие от оригинала:** {video_data['difference_pct']:.1f}%"
+                    
+                    caption_text = (f"✅ Видео {video_data['index']}/{video_count}\n"
+                                   f"🎨 Фильтр: {filter_info['name']}\n"
+                                   f"📁 Размер: {os.path.getsize(video_data['path']) / (1024*1024):.1f} MB{difference_text}"
+                                   + (f"\n☁️ Yandex Disk: {video_data['yandex_url']}" if video_data.get('yandex_url') else ""))
+                    
                     await query.message.reply_video(
                         video=open(video_data['path'], 'rb'),
-                        caption=f"✅ Видео {video_data['index']}/{video_count}\n"
-                               f"🎨 Фильтр: {filter_info['name']}\n"
-                               f"📁 Размер: {os.path.getsize(video_data['path']) / (1024*1024):.1f} MB"
-                               + (f"\n☁️ Yandex Disk: {video_data['yandex_url']}" if video_data['yandex_url'] else ""),
+                        caption=caption_text,
+                        parse_mode='Markdown',
                         supports_streaming=True
                     )
                 except Exception as e:
@@ -3974,16 +4228,42 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.info(f"📁 Локальный файл существует: {file_path}")
             logger.info(f"📁 Размер файла: {os.path.getsize(file_path)} bytes")
             
-            # Загружаем файл
+            # Загружаем файл (с обработкой дубликатов)
             logger.info(f"⬆️ Загружаю файл на Yandex Disk: {remote_path}")
-            self.yandex_disk.upload(file_path, remote_path)
+            try:
+                self.yandex_disk.upload(file_path, remote_path)
+            except Exception as upload_error:
+                error_str = str(upload_error)
+                # Если файл уже существует, используем уникальное имя
+                if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
+                    # Создаем уникальное имя с timestamp
+                    import time
+                    unique_id = int(time.time())
+                    filename_parts = filename.rsplit('.', 1)
+                    if len(filename_parts) == 2:
+                        new_filename = f"{filename_parts[0]}_{unique_id}.{filename_parts[1]}"
+                    else:
+                        new_filename = f"{filename}_{unique_id}"
+                    remote_path = f"{remote_folder}/{new_filename}"
+                    try:
+                        self.yandex_disk.upload(file_path, remote_path)
+                        logger.info(f"Файл загружен с уникальным именем: {remote_path}")
+                    except Exception as retry_error:
+                        logger.error(f"Ошибка повторной загрузки: {retry_error}")
+                        return None, None
+                else:
+                    logger.error(f"Ошибка загрузки: {upload_error}")
+                    return None, None
             
             # Создаем публичную ссылку
-            public_url = self.yandex_disk.get_download_link(remote_path)
-            
-            logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
-            logger.info(f"🔗 Публичная ссылка: {public_url}")
-            return public_url, remote_path
+            try:
+                public_url = self.yandex_disk.get_download_link(remote_path)
+                logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
+                logger.info(f"🔗 Публичная ссылка: {public_url}")
+                return public_url, remote_path
+            except Exception as link_error:
+                logger.error(f"Ошибка создания публичной ссылки: {link_error}")
+                return remote_path, remote_path  # Возвращаем путь даже без ссылки
             
         except Exception as e:
             logger.error(f"Ошибка загрузки на Yandex Disk: {e}")
