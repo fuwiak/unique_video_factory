@@ -1,5 +1,7 @@
 # ⏰ Railway Cron Setup - Daily Views Report
 
+> 📖 **Szybki setup:** Zobacz [CRON_SETUP_GUIDE.md](CRON_SETUP_GUIDE.md) dla instrukcji krok po kroku z cron-job.org
+
 ## 🎯 Autoamtyzacja zadań
 
 Railway automatycznie uruchamia codzienny raport wyświetleń z YouTube.
