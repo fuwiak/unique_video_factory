@@ -80,7 +80,7 @@ class VideoUniquizer:
         
         # Изменение скорости (используем переданный параметр или случайный)
         if speed_factor is None:
-        speed_factor = random.uniform(*self.speed_range)
+            speed_factor = random.uniform(*self.speed_range)
         
         print(f"⚡ Применяю изменение скорости: {speed_factor:.3f}x")
         
@@ -306,7 +306,7 @@ class VideoUniquizer:
         
         # Выбираем стиль эффекта (используем переданный или случайный)
         if effect_style is None:
-        effect_style = random.choice(list(self.social_effects.keys()))
+            effect_style = random.choice(list(self.social_effects.keys()))
         
         # Используем переданные параметры или дефолтные
         if effect_params is None:
@@ -400,7 +400,7 @@ class VideoUniquizer:
         
         # Выбираем стиль эффекта (используем переданный или случайный)
         if effect_style is None:
-        effect_style = random.choice(list(self.social_effects.keys()))
+            effect_style = random.choice(list(self.social_effects.keys()))
         
         # Используем переданные параметры или дефолтные
         if effect_params is None:
