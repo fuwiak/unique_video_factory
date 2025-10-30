@@ -3314,10 +3314,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     
                     def progress_callback(message, progress_pct=None):
                         try:
+                            # Всегда логируем (как в quick mode)
+                            logger.info(f"📊 VidGear Progress: {message}")
+                            if progress_pct is not None:
+                                logger.info(f"📊 Progress: {progress_pct:.1f}%")
+                            
                             # Throttle updates - не чаще чем раз в 2 секунды
                             current_time = time.time()
                             if current_time - last_update_time[0] < 2.0:
-                                print(f"📊 {message}")
+                                # Но логируем всегда
                                 return
                             last_update_time[0] = current_time
                             
@@ -3378,10 +3383,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 
                 def progress_callback(message, progress_pct=None):
                     try:
+                        # Всегда логируем (как в quick mode)
+                        logger.info(f"📊 VidGear Progress: {message}")
+                        if progress_pct is not None:
+                            logger.info(f"📊 Progress: {progress_pct:.1f}%")
+                        
                         # Throttle updates - не чаще чем раз в 2 секунды
                         current_time = time.time()
                         if current_time - last_update_time[0] < 2.0:
-                            print(f"📊 {message}")
+                            # Но логируем всегда
                             return
                         last_update_time[0] = current_time
                         
