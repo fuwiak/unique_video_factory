@@ -1165,21 +1165,30 @@ class TelegramVideoBot:
                 # Быстрый режим - сохраняем на Yandex Disk
                 await self.save_quick_result_to_yandex(update, user_id)
             else:
-                # Расширенный режим: сохраняем выбор, но не запускаем создание видео
-                # ВСЕГДА генерируем только 1 видео
-                user_states[user_id]['video_count'] = 1
-
-                # Сообщение-подтверждение и только кнопка «Начать заново»
+                # Расширенный режим: показываем меню выбора количества видео
+                user_states[user_id]['status'] = 'waiting_video_count'
+                
+                # Сообщение с подтверждением и выбором количества
                 confirm_text = (
-                f"✅ Настройки сохранены:\n"
-                f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
-                f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
-                f"📁 Папка: **{text}**\n"
-                    f"📂 Создана структура папок на Yandex Disk"
+                    f"✅ Настройки сохранены:\n"
+                    f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
+                    f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
+                    f"📁 Папка: **{text}**\n\n"
+                    f"📂 Создана структура папок на Yandex Disk\n\n"
+                    f"🎬 **Выберите количество видео:**"
                 )
-                restart_keyboard = [[InlineKeyboardButton("🔄 Начать заново", callback_data="restart")]]
-                restart_markup = InlineKeyboardMarkup(restart_keyboard)
-                await update.message.reply_text(confirm_text, parse_mode='Markdown', reply_markup=restart_markup)
+                
+                # Клавиатура для выбора количества
+                keyboard = [
+                    [InlineKeyboardButton("🎬 1 видео", callback_data="count_1")],
+                    [InlineKeyboardButton("🎬 3 видео", callback_data="count_3")],
+                    [InlineKeyboardButton("🎬 5 видео", callback_data="count_5")],
+                    [InlineKeyboardButton("🎬 10 видео", callback_data="count_10")],
+                    [InlineKeyboardButton("🔄 Начать заново", callback_data="restart")]
+                ]
+                markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(confirm_text, parse_mode='Markdown', reply_markup=markup)
                 return
 
     async def handle_blogger_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
