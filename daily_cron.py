@@ -37,13 +37,10 @@ def main():
     """Main function"""
     logger.info("⏰ Daily cron service started")
     
-    # TEST: Run in 2 minutes from now (will remove after test)
-    schedule.every(2).minutes.do(run_daily_report)
+    # Schedule daily report at midnight UTC (00:00)
+    schedule.every().day.at("00:00").do(run_daily_report)
     
-    # Production: Schedule daily report at midnight UTC (00:00)
-    # schedule.every().day.at("00:00").do(run_daily_report)
-    
-    logger.info("📅 Daily report scheduled for 2 minutes (TEST)")
+    logger.info("📅 Daily report scheduled for 00:00 UTC")
     
     # Keep the script running
     while True:
