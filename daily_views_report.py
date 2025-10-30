@@ -161,71 +161,113 @@ class DailyViewsReporter:
             logger.error(f"❌ Błąd pobierania wyświetleń: {e}")
             return None
     
-    def add_daily_row(self, video_url: str):
-        """Add a new daily row for a video"""
+    def add_daily_row(self, sheet, video_url: str, published_date: str = None):
+        """Add a new daily row for a video to specific sheet"""
         try:
-            if not self.sheet:
-                logger.error("❌ Google Sheets nie jest zainicjalizowany")
+            if not sheet:
+                logger.error("❌ Arkusz nie jest zainicjalizowany")
                 return False
             
             # Get video ID from URL
             video_id = self.get_video_id_from_url(video_url)
             if not video_id:
+                logger.warning(f"⚠️ Nie można wyodrębnić video_id z URL: {video_url}")
                 return False
             
             # Get current views
             video_data = self.get_video_views(video_id)
             if not video_data:
+                logger.warning(f"⚠️ Nie można pobrać danych dla: {video_url}")
                 return False
             
-            # Prepare row data
-            current_date = datetime.now().strftime('%Y-%m-%d')
+            # Use published date from video or provided date
+            post_date = published_date or (video_data['published_at'][:10] if video_data.get('published_at') else datetime.now().strftime('%Y-%m-%d'))
+            
+            # Prepare row data (match structure: Референс, Видео, Дата поста, Кол-во просмотров 1 день, Кол-во просмотров 1 нед, Кол-во просмотров 1 мес)
             row = [
-                video_url,  # Референс (URL)
-                video_data['title'],  # Видео
-                video_data['published_at'][:10],  # Дата поста
-                video_data['views'],  # Кол-во просмотров 1 день
+                '',  # Референс (puste)
+                video_url,  # Видео (URL)
+                post_date,  # Дата поста
+                video_data['views'],  # Кол-во просмотров 1 день (dzisiejsze wyświetlenia)
                 video_data['views'],  # Кол-во просмотров 1 нед (same for now)
                 video_data['views']   # Кол-во просмотров 1 мес (same for now)
             ]
             
             # Add row to sheet (append to end)
-            self.sheet.append_row(row)
+            sheet.append_row(row)
             
-            logger.info(f"✅ Dodano wiersz: {video_data['title']} - {video_data['views']} wyświetleń")
+            logger.info(f"✅ Dodano wiersz: {video_url} - {video_data['views']} wyświetleń")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Błąd dodawania wiersza: {e}")
+            logger.error(f"❌ Błąd dodawania wiersza dla {video_url}: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return False
     
     def process_all_videos(self):
-        """Process all videos from sheet"""
+        """Process all videos from all sheets (Нина, Лиза, Mutant)"""
         try:
-            if not self.sheet:
-                logger.error("❌ Google Sheets nie jest zainicjalizowany")
+            if not self.gc:
+                logger.error("❌ Google Sheets client nie jest zainicjalizowany")
                 return False
             
-            # Get all rows
-            all_rows = self.sheet.get_all_values()
+            # Open spreadsheet
+            spreadsheet = self.gc.open_by_key(self.sheet_id)
             
-            if len(all_rows) < 2:
-                logger.info("📋 Brak danych w arkuszu")
-                return True
+            # List of sheets to process
+            sheet_names = ['Нина', 'Лиза', 'Mutant']
+            total_processed = 0
             
-            # Process unique video URLs (column A - Референс)
-            processed_urls = set()
-            for i, row in enumerate(all_rows[1:], start=2):  # Skip header row
-                if len(row) > 0 and row[0]:  # Column A has data
-                    url = row[0]
-                    if url not in processed_urls:
-                        processed_urls.add(url)
-                        logger.info(f"📊 Przetwarzam wideo {len(processed_urls)}: {url}")
-                        self.add_daily_row(url)
+            for sheet_name in sheet_names:
+                try:
+                    logger.info(f"📊 Przetwarzam arkusz: {sheet_name}")
+                    sheet = spreadsheet.worksheet(sheet_name)
+                    
+                    # Get all rows
+                    all_rows = sheet.get_all_values()
+                    
+                    if len(all_rows) < 2:
+                        logger.info(f"📋 Arkusz {sheet_name} jest pusty")
+                        continue
+                    
+                    # Find column index for "Видео" (should be column B, index 1)
+                    headers = all_rows[0]
+                    video_col_index = None
+                    date_col_index = None
+                    
+                    for i, header in enumerate(headers):
+                        if 'Видео' in header or 'Video' in header:
+                            video_col_index = i
+                        if 'Дата поста' in header or 'Дата' in header:
+                            date_col_index = i
+                    
+                    if video_col_index is None:
+                        logger.warning(f"⚠️ Nie znaleziono kolumny 'Видео' w arkuszu {sheet_name}")
+                        continue
+                    
+                    # Process unique video URLs (column B - Видео)
+                    processed_urls = set()
+                    for i, row in enumerate(all_rows[1:], start=2):  # Skip header row
+                        if len(row) > video_col_index and row[video_col_index]:
+                            url = row[video_col_index].strip()
+                            # Only process valid URLs
+                            if url.startswith('http') and url not in processed_urls:
+                                processed_urls.add(url)
+                                published_date = row[date_col_index].strip() if date_col_index and len(row) > date_col_index else None
+                                logger.info(f"📊 Przetwarzam wideo {len(processed_urls)} z {sheet_name}: {url}")
+                                self.add_daily_row(sheet, url, published_date)
+                    
+                    logger.info(f"✅ Arkusz {sheet_name}: przetworzono {len(processed_urls)} wideo")
+                    total_processed += len(processed_urls)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Błąd przetwarzania arkusza {sheet_name}: {e}")
+                    import traceback
+                    logger.error(traceback.format_exc())
+                    continue
             
-            logger.info(f"✅ Przetworzono {len(processed_urls)} wideo")
+            logger.info(f"✅ Łącznie przetworzono {total_processed} wideo ze wszystkich arkuszy")
             return True
             
         except Exception as e:
@@ -241,7 +283,7 @@ def main():
     
     reporter = DailyViewsReporter()
     
-    if not reporter.sheet:
+    if not reporter.gc:
         logger.error("❌ Nie można połączyć z Google Sheets")
         return
     
