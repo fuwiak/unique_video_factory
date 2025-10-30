@@ -1555,12 +1555,12 @@ class TelegramVideoBot:
                     parse_mode='Markdown'
                 )
             else:
-            await update.message.reply_text(
-                f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
-                f"📅 Дата публикации: {publish_date}\n"
-                f"🆔 ID сценария: {scenario_id}\n"
-                f"📝 Описание: {description}"
-            )
+                await update.message.reply_text(
+                    f"✅ Видео {approval_id} отправлено в чатбот с метаданными:\n"
+                    f"📅 Дата публикации: {publish_date}\n"
+                    f"🆔 ID сценария: {scenario_id}\n"
+                    f"📝 Описание: {description}"
+                )
             
         except Exception as e:
             await update.message.reply_text(f"❌ Ошибка обработки метаданных: {str(e)}")
@@ -1743,9 +1743,9 @@ class TelegramVideoBot:
             
             # Создаем папку approved, если не существует
             try:
-            if not self.yandex_disk.exists(approved_folder):
-                self.yandex_disk.mkdir(approved_folder)
-                logger.info(f"Создана папка approved: {approved_folder}")
+                if not self.yandex_disk.exists(approved_folder):
+                    self.yandex_disk.mkdir(approved_folder)
+                    logger.info(f"Создана папка approved: {approved_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку approved: {str(e)}"
                 logger.error(error_msg)
@@ -1754,9 +1754,9 @@ class TelegramVideoBot:
             # Создаем подпапку для конкретного видео
             video_folder = f"{approved_folder}/{approval_id}"
             try:
-            if not self.yandex_disk.exists(video_folder):
-                self.yandex_disk.mkdir(video_folder)
-                logger.info(f"Создана папка видео: {video_folder}")
+                if not self.yandex_disk.exists(video_folder):
+                    self.yandex_disk.mkdir(video_folder)
+                    logger.info(f"Создана папка видео: {video_folder}")
             except Exception as e:
                 error_msg = f"Не удалось создать папку видео: {str(e)}"
                 logger.error(error_msg)
@@ -1800,8 +1800,8 @@ class TelegramVideoBot:
                 try:
                     # Сначала копируем файл (с обработкой дубликатов)
                     try:
-                    self.yandex_disk.copy(source_remote_path, approved_path)
-                    logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
+                        self.yandex_disk.copy(source_remote_path, approved_path)
+                        logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
                     except Exception as copy_error:
                         error_str = str(copy_error)
                         # Если файл уже существует, используем уникальное имя
@@ -1822,8 +1822,8 @@ class TelegramVideoBot:
                     
                     # Затем удаляем исходный файл
                     try:
-                    self.yandex_disk.remove(source_remote_path)
-                    logger.info(f"Исходный файл удален: {source_remote_path}")
+                        self.yandex_disk.remove(source_remote_path)
+                        logger.info(f"Исходный файл удален: {source_remote_path}")
                     except Exception as remove_error:
                         logger.warning(f"Не удалось удалить исходный файл: {remove_error}")
                         # Это не критично - продолжаем
@@ -1836,8 +1836,8 @@ class TelegramVideoBot:
                     source_path = video_data.get('video_path')
                     if source_path and os.path.exists(source_path):
                         try:
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
+                            self.yandex_disk.upload(source_path, approved_path)
+                            logger.info(f"Файл загружен локально: {source_path}")
                         except Exception as upload_error:
                             # Переводим ошибку в понятное сообщение
                             error_msg = self.translate_yandex_error(upload_error)
@@ -1854,8 +1854,8 @@ class TelegramVideoBot:
                 if source_path and os.path.exists(source_path):
                     approved_path = f"{video_folder}/video.mp4"
                     try:
-                    self.yandex_disk.upload(source_path, approved_path)
-                    logger.info(f"Файл загружен локально: {source_path}")
+                        self.yandex_disk.upload(source_path, approved_path)
+                        logger.info(f"Файл загружен локально: {source_path}")
                     except Exception as upload_error:
                         # Переводим ошибку в понятное сообщение
                         error_msg = self.translate_yandex_error(upload_error)
@@ -3285,7 +3285,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             # Throttle updates - не чаще чем раз в 2 секунды
                             current_time = time.time()
                             if current_time - last_update_time[0] < 2.0:
-                            print(f"📊 {message}")
+                                print(f"📊 {message}")
                                 return
                             last_update_time[0] = current_time
                             
@@ -4452,7 +4452,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Загружаем файл (с обработкой дубликатов)
             logger.info(f"⬆️ Загружаю файл на Yandex Disk: {remote_path}")
             try:
-            self.yandex_disk.upload(file_path, remote_path)
+                self.yandex_disk.upload(file_path, remote_path)
             except Exception as upload_error:
                 error_str = str(upload_error)
                 # Если файл уже существует, используем уникальное имя
@@ -4478,10 +4478,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Создаем публичную ссылку
             try:
-            public_url = self.yandex_disk.get_download_link(remote_path)
-            logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
-            logger.info(f"🔗 Публичная ссылка: {public_url}")
-            return public_url, remote_path
+                public_url = self.yandex_disk.get_download_link(remote_path)
+                logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
+                logger.info(f"🔗 Публичная ссылка: {public_url}")
+                return public_url, remote_path
             except Exception as link_error:
                 logger.error(f"Ошибка создания публичной ссылки: {link_error}")
                 return remote_path, remote_path  # Возвращаем путь даже без ссылки

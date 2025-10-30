@@ -1,0 +1,20 @@
+{
+    "files.watcherExclude": {
+        "**/target": true
+    },
+    "python.analysis.typeCheckingMode": "standard",
+    "python.analysis.diagnosticMode": "workspace",
+    "python.analysis.autoImportCompletions": true,
+    "python.defaultInterpreterPath": "/opt/anaconda3/bin/python3",
+    "editor.formatOnSave": false,
+    "python.analysis.errors": ["*"],
+    "python.analysis.warnings": ["*"],
+    "python.analysis.diagnosticSeverityOverrides": {
+        "reportGeneralTypeIssues": "error",
+        "reportImportCycles": "error",
+        "reportMissingImports": "error"
+    },
+    "editor.rulers": [100],
+    "editor.detectIndentation": true,
+    "python.analysis.completeFunctionParens": true
+}

@@ -1,0 +1,21 @@
+{
+  "typeCheckingMode": "standard",
+  "reportMissingImports": "error",
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "reportUnusedClass": "warning",
+  "reportUnusedFunction": "warning",
+  "reportUnusedVariable": "warning",
+  "reportGeneralTypeIssues": "error",
+  "pythonVersion": "3.11",
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/venv"
+  ]
+}
+
