@@ -3035,6 +3035,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 
                 filter_info['params'] = filter_params
                 
+                # Get main event loop for async operations in threads
+                main_loop = asyncio.get_event_loop()
+                
                 task = {
                     'index': i + 1,
                     'filter_id': filter_id,
@@ -3045,7 +3048,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'upload_date': upload_date,
                     'chat_id': query.message.chat_id,
                     'message_id': query.message.message_id,
-                    'bot': context.bot
+                    'bot': context.bot,
+                    'loop': main_loop  # Add event loop for async operations in threads
                 }
                 tasks.append(task)
             
@@ -3295,7 +3299,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                     
                     # Progress callback for user updates in Telegram
-                    loop = asyncio.get_event_loop()
+                    # Get loop from task if available, otherwise try to get current loop
+                    loop = task.get('loop')
+                    if loop is None:
+                        try:
+                            loop = asyncio.get_event_loop()
+                        except RuntimeError:
+                            # No event loop in thread, just log progress to console
+                            loop = None
+                    
                     last_update_time = [0]
                     message_ref = {'msg': None}
                     
@@ -3320,8 +3332,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             
                             print(f"📊 [{progress_pct:.1f}%] {message}" if progress_pct else f"📊 {message}")
                             
-                            # Обновляем сообщение в Telegram асинхронно
-                            if 'bot' in task and 'chat_id' in task and 'message_id' in task:
+                            # Обновляем сообщение в Telegram асинхронно только если есть event loop
+                            if loop and 'bot' in task and 'chat_id' in task and 'message_id' in task:
                                 async def update_message():
                                     try:
                                         await task['bot'].edit_message_text(
@@ -3351,7 +3363,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                 
                 # Progress callback for user updates in Telegram
-                loop = asyncio.get_event_loop()
+                # Get loop from task if available, otherwise try to get current loop
+                loop = task.get('loop')
+                if loop is None:
+                    try:
+                        loop = asyncio.get_event_loop()
+                    except RuntimeError:
+                        # No event loop in thread, just log progress to console
+                        loop = None
+                
                 last_update_time = [0]
                 message_ref = {'msg': None}
                 
@@ -3378,8 +3398,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         
                         print(f"📊 [{progress_pct:.1f}%] {message}" if progress_pct else f"📊 {message}")
                         
-                        # Обновляем сообщение в Telegram асинхронно
-                        if 'bot' in task and 'chat_id' in task and 'message_id' in task:
+                        # Обновляем сообщение в Telegram асинхронно только если есть event loop
+                        if loop and 'bot' in task and 'chat_id' in task and 'message_id' in task:
                             async def update_message():
                                 try:
                                     await task['bot'].edit_message_text(
