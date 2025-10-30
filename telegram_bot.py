@@ -1165,43 +1165,22 @@ class TelegramVideoBot:
                 # Быстрый режим - сохраняем на Yandex Disk
                 await self.save_quick_result_to_yandex(update, user_id)
             else:
-                # Расширенный режим - продолжаем workflow
+                # Расширенный режим: сохраняем выбор, но не запускаем создание видео
                 # ВСЕГДА генерируем только 1 видео
                 user_states[user_id]['video_count'] = 1
-            
-            await update.message.reply_text(
+
+                # Сообщение-подтверждение и только кнопка «Начать заново»
+                confirm_text = (
                 f"✅ Настройки сохранены:\n"
                 f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
                 f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
                 f"📁 Папка: **{text}**\n"
-                f"📂 Создана структура папок на Yandex Disk\n\n"
-                    "🎨 Выберите группу фильтров:",
-                    parse_mode='Markdown'
-            )
-            
-                # Создаем клавиатуру для выбора группы фильтров
-            keyboard = []
-            filter_groups = {
-                'vintage': ['vintage_slow', 'vintage_normal', 'vintage_fast'],
-                'dramatic': ['dramatic_slow', 'dramatic_normal', 'dramatic_fast'],
-                'soft': ['soft_slow', 'soft_normal', 'soft_fast'],
-                'vibrant': ['vibrant_slow', 'vibrant_normal', 'vibrant_fast']
-            }
-            
-            for group_name, filter_ids in filter_groups.items():
-                keyboard.append([
-                    InlineKeyboardButton(
-                            f"🎨 {group_name.title()}", 
-                            callback_data=f"group_{group_name}"
-                    )
-                ])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                    "🎬 Создаю 1 видео\n\n"
-                    "🎨 Выберите группу фильтров:",
-                reply_markup=reply_markup
-            )
+                    f"📂 Создана структура папок на Yandex Disk"
+                )
+                restart_keyboard = [[InlineKeyboardButton("🔄 Начать заново", callback_data="restart")]]
+                restart_markup = InlineKeyboardMarkup(restart_keyboard)
+                await update.message.reply_text(confirm_text, parse_mode='Markdown', reply_markup=restart_markup)
+                return
 
     async def handle_blogger_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка создания карты блогера"""
