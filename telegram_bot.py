@@ -3350,12 +3350,51 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 trimmed_input_path = self.trim_video_if_needed_sync(task['input_path'], max_duration_seconds=60)
                 compressed_input_path = self.compress_video_if_needed_sync(trimmed_input_path)
                 
-                # Progress callback for user updates
+                # Progress callback for user updates in Telegram
+                loop = asyncio.get_event_loop()
+                last_update_time = [0]
+                message_ref = {'msg': None}
+                
                 def progress_callback(message, progress_pct=None):
-                    if progress_pct is not None:
-                        print(f"📊 [{progress_pct:.1f}%] {message}")
-                    else:
-                        print(f"📊 {message}")
+                    try:
+                        # Throttle updates - не чаще чем раз в 2 секунды
+                        current_time = time.time()
+                        if current_time - last_update_time[0] < 2.0:
+                            print(f"📊 {message}")
+                            return
+                        last_update_time[0] = current_time
+                        
+                        # Создаем текст для Telegram
+                        progress_text = f"🎬 **Применяю фильтр...**\n\n"
+                        progress_text += f"🎨 {task['filter_info']['name']}\n\n"
+                        progress_text += f"📊 **Прогресс:**\n{message}\n"
+                        
+                        if progress_pct is not None:
+                            # Добавляем прогресс-бар
+                            progress_bar_length = 20
+                            filled = int(progress_pct / 100 * progress_bar_length)
+                            progress_bar = "█" * filled + "░" * (progress_bar_length - filled)
+                            progress_text += f"\n`{progress_bar}` {progress_pct:.1f}%\n"
+                        
+                        print(f"📊 [{progress_pct:.1f}%] {message}" if progress_pct else f"📊 {message}")
+                        
+                        # Обновляем сообщение в Telegram асинхронно
+                        if 'bot' in task and 'chat_id' in task and 'message_id' in task:
+                            async def update_message():
+                                try:
+                                    await task['bot'].edit_message_text(
+                                        chat_id=task['chat_id'],
+                                        message_id=task['message_id'],
+                                        text=progress_text,
+                                        parse_mode='Markdown'
+                                    )
+                                except Exception as e:
+                                    logger.error(f"Ошибка обновления сообщения: {e}")
+                            
+                            asyncio.run_coroutine_threadsafe(update_message(), loop)
+                        
+                    except Exception as e:
+                        logger.error(f"Ошибка в progress_callback: {e}")
                 
                 uniquizer = VideoUniquizer(progress_callback=progress_callback)
                 result_path = uniquizer.uniquize_video(
