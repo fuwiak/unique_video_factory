@@ -1011,7 +1011,7 @@ class TelegramVideoBot:
         try:
             success, error_msg = await self.move_to_approved_folder(video_data, approval_id)
             if success:
-            await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
+                await update.message.reply_text(f"✅ Видео {approval_id} одобрено и перемещено в папку approved!")
             else:
                 await update.message.reply_text(error_msg, parse_mode='Markdown')
         except Exception as e:
