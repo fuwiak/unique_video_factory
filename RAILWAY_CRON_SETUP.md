@@ -6,17 +6,17 @@ Railway automatycznie uruchamia codzienny raport wyświetleń z YouTube.
 
 ## 📋 Jak to działa?
 
-Railway używa **Procfile** aby uruchomić wiele procesów:
+Railway używa **Procfile** aby uruchomić aplikację:
 
 ```procfile
-web: python telegram_bot.py     # Główny bot
-cron: python daily_cron.py       # Cron service
+web: python telegram_bot.py     # Główny bot z endpointem dla cron
 ```
 
-Proces `cron` uruchamia się automatycznie i:
-1. **Uruchamia raport codziennie o 00:00 UTC**
-2. **Sprawdza nowe wideo** w Google Sheets
+Bot ma wbudowany endpoint `/trigger-daily-report` który:
+1. **Uruchamia raport** na żądanie
+2. **Sprawdza nowe wideo** w Google Sheets  
 3. **Dodaje wyświetlenia** do arkusza
+4. **Pracuje w tle** bez blokowania bota
 
 ## 🚀 Instalacja na Railway
 
@@ -27,62 +27,98 @@ Proces `cron` uruchamia się automatycznie i:
 schedule>=1.2.0
 ```
 
-### 2. Zaktualizuj Procfile
+### 2. Procfile
 
-✅ **Już zaktualizowany:**
+✅ **Już skonfigurowany:**
 ```procfile
 web: python telegram_bot.py
-cron: python daily_cron.py
 ```
+
+Endpoint jest wbudowany w telegram_bot.py
 
 ### 3. Deploy na Railway
 
 ```bash
 # Push zmian
 git add .
-git commit -m "Add cron service for daily views report"
+git commit -m "Add daily views report endpoint"
 git push
 
-# Railway automatycznie wykryje nowy proces
+# Railway automatycznie zrestartuje aplikację
 ```
 
 ### 4. Sprawdź w Railway Dashboard
 
 1. Otwórz Railway Dashboard
-2. Zobaczysz **2 procesy**:
-   - **web** - Telegram bot
-   - **cron** - Daily views reporter
+2. Zobaczysz **1 proces**:
+   - **web** - Telegram bot (z endpointem /trigger-daily-report)
+   
+3. Sprawdź logi:
+   ```
+   Railway Dashboard → Deployments → Logs
+   Powinno być: Health server started on port 8000
+   ```
+
+## ⏰ Konfiguracja Cron
+
+**Zalecana metoda:** Używaj **external cron service** (darmowy):
+
+### External Cron Service (Zalecane)
+
+Najpewniejsza metoda - darmowy external cron service:
+
+**Darmowe cron services:**
+- [cron-job.org](https://cron-job.org) - Darmowy, łatwy
+- [UptimeRobot](https://uptimerobot.com) - Darmowy, niezawodny
+- [EasyCron](https://www.easycron.com) - Darmowy tier
+
+**Jak skonfigurować:**
+1. Zarejestruj się na wybranej stronie
+2. Dodaj nowe zadanie cron:
+   - URL: `https://twoja-domena.onrender.com/trigger-daily-report`
+   - Schedule: `0 0 * * *` (codziennie o północy UTC)
+   - Method: GET
+3. Save i gotowe!
+
+**Endpoint jest już dostępny:**
+- `GET/POST https://twoja-domena.onrender.com/trigger-daily-report`
+- Automatycznie wywołuje raport codzienny
+
+## 🔍 Testowanie Endpointu
+
+```bash
+# Lokalnie
+curl http://localhost:8000/trigger-daily-report
+
+# Na Railway (po deploy)
+curl https://twoja-domena.railway.app/trigger-daily-report
+
+# Odpowiedź:
+# {"status": "triggered", "message": "Daily report triggered successfully", "timestamp": "..."}
+```
 
 ## ⏰ Harmonogram
 
-**Domyślnie:** Codziennie o **00:00 UTC**
-
-**Możesz zmienić w `daily_cron.py`:**
-
-```python
-# Domyślnie: codziennie o północy UTC
-schedule.every().day.at("00:00").do(run_daily_report)
-
-# Inne opcje:
-schedule.every().day.at("10:30").do(run_daily_report)  # 10:30 UTC
-schedule.every(2).hours.do(run_daily_report)            # Co 2 godziny
-schedule.every(1).hours.do(run_daily_report)            # Co godzinę
-```
+**Konfigurujesz w external cron service:**
+- Domyślnie: Codziennie o **00:00 UTC** (`0 0 * * *`)
+- Możesz zmienić na dowolny harmonogram
 
 ## 📊 Logi
 
 Logi są zapisywane w:
-- Railway Dashboard → Cron Process → Logs
-- Lub lokalnie w: `logs/daily_report.log`
+- Railway Dashboard → Deployments → Logs
+- Szukaj linii z: `📊 Daily report triggered via API endpoint`
+- Błędy: `❌ Error triggering daily report`
 
 ## 🐛 Troubleshooting
 
 ### Cron nie działa
 
 **Sprawdź:**
-1. Czy proces `cron` jest uruchomiony w Railway Dashboard
-2. Czy logi pokazują błędy
-3. Czy `schedule` jest zainstalowany: `pip list | grep schedule`
+1. Czy endpoint działa: `curl https://twoja-domena.railway.app/trigger-daily-report`
+2. Czy external cron service wysyła request (sprawdź logi w cron service)
+3. Czy zmienne środowiskowe są ustawione (Google Sheets API)
+4. Czy bot jest online w Railway Dashboard
 
 ### Błędy autoryzacji Google Sheets
 

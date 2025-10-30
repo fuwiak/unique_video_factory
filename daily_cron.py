@@ -21,7 +21,7 @@ def run_daily_report():
     
     reporter = DailyViewsReporter()
     
-    if not reporter.sheet:
+    if not reporter.gc:
         logger.error("❌ Nie można połączyć z Google Sheets")
         return
     

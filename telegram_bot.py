@@ -4945,6 +4945,41 @@ class HealthHandler(BaseHTTPRequestHandler):
                 "service": "telegram-bot"
             }
             self.wfile.write(json.dumps(response).encode())
+        elif self.path == '/trigger-daily-report':
+            # Trigger daily views report
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            try:
+                # Import and run daily reporter
+                from daily_views_report import DailyViewsReporter
+                import threading
+                
+                def run_report():
+                    reporter = DailyViewsReporter()
+                    if reporter.gc:
+                        reporter.process_all_videos()
+                
+                # Run in background thread
+                thread = threading.Thread(target=run_report, daemon=True)
+                thread.start()
+                
+                response = {
+                    "status": "triggered",
+                    "message": "Daily report triggered successfully",
+                    "timestamp": datetime.now().isoformat()
+                }
+                logger.info("📊 Daily report triggered via API endpoint")
+            except Exception as e:
+                response = {
+                    "status": "error",
+                    "message": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+                logger.error(f"❌ Error triggering daily report: {e}")
+            
+            self.wfile.write(json.dumps(response).encode())
         else:
             self.send_response(404)
             self.end_headers()
