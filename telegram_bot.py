@@ -2045,80 +2045,38 @@ ID сценария: {video_data['metadata']['scenario_id']}
             'video_id': None
         }
         
-        # Показываем меню выбора режима
-        keyboard = [
-            [InlineKeyboardButton("⚡ Быстрый фильтр", callback_data="mode_quick")],
-            [InlineKeyboardButton("📦 Создать варианты (расширенный)", callback_data="mode_advanced")]
-        ]
+        # Сразу показываем фильтры (без выбора режима)
+        user_states[user_id]['mode'] = 'quick'
+        
+        # Создаем клавиатуру со всеми фильтрами
+        keyboard = []
+        
+        # Группируем фильтры
+        filter_groups = {
+            '📸 Винтажный': ['vintage_slow', 'vintage_normal', 'vintage_fast'],
+            '🎭 Драматический': ['dramatic_slow', 'dramatic_normal', 'dramatic_fast'],
+            '🌸 Мягкий': ['soft_slow', 'soft_normal', 'soft_fast'],
+            '🌈 Яркий': ['vibrant_slow', 'vibrant_normal', 'vibrant_fast']
+        }
+        
+        for group_name, filters in filter_groups.items():
+            keyboard.append([InlineKeyboardButton(f"{group_name}", callback_data=f"quickfilter_{filters[1]}")])
+            # Добавляем варианты скорости под каждой группой
+            speed_buttons = []
+            for f in filters:
+                speed_label = "медленно" if "slow" in f else ("быстро" if "fast" in f else "нормально")
+                speed_buttons.append(InlineKeyboardButton(f"  {speed_label}", callback_data=f"quickfilter_{f}"))
+            keyboard.append(speed_buttons)
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
             f"✅ **Видео получено!** ({file_size_mb:.1f} MB)\n\n"
             f"📁 Файл: `{file_name}`\n\n"
-            f"Выберите режим обработки:",
+            f"Выберите фильтр для применения:",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
-    
-    async def handle_mode_selection(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработка выбора режима обработки"""
-        query = update.callback_query
-        await query.answer()
-        
-        user_id = query.from_user.id
-        
-        if user_id not in user_states:
-            await query.edit_message_text("❌ Сессия истекла. Отправьте видео заново.")
-            return
-        
-        mode = query.data.replace('mode_', '')
-        
-        if mode == 'quick':
-            # Быстрый режим - показываем все фильтры
-            user_states[user_id]['mode'] = 'quick'
-            
-            # Создаем клавиатуру со всеми фильтрами
-            keyboard = []
-            
-            # Группируем фильтры
-            filter_groups = {
-                '📸 Винтажный': ['vintage_slow', 'vintage_normal', 'vintage_fast'],
-                '🎭 Драматический': ['dramatic_slow', 'dramatic_normal', 'dramatic_fast'],
-                '🌸 Мягкий': ['soft_slow', 'soft_normal', 'soft_fast'],
-                '🌈 Яркий': ['vibrant_slow', 'vibrant_normal', 'vibrant_fast']
-            }
-            
-            for group_name, filters in filter_groups.items():
-                keyboard.append([InlineKeyboardButton(f"{group_name}", callback_data=f"quickfilter_{filters[1]}")])
-                # Добавляем варианты скорости под каждой группой
-                speed_buttons = []
-                for f in filters:
-                    speed_label = "медленно" if "slow" in f else ("быстро" if "fast" in f else "нормально")
-                    speed_buttons.append(InlineKeyboardButton(f"  {speed_label}", callback_data=f"quickfilter_{f}"))
-                keyboard.append(speed_buttons)
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await query.edit_message_text(
-                "⚡ **БЫСТРЫЙ РЕЖИМ**\n\n"
-                "Выберите фильтр для применения к видео:\n\n"
-                "💡 _Выберите фильтр и сразу получите результат!_",
-                reply_markup=reply_markup,
-                parse_mode='Markdown'
-            )
-            
-        elif mode == 'advanced':
-            # Расширенный режим - запрашиваем метаданные
-            user_states[user_id]['mode'] = 'advanced'
-            user_states[user_id]['status'] = 'waiting_video_id'
-            
-            await query.edit_message_text(
-                "📦 **РАСШИРЕННЫЙ РЕЖИМ**\n\n"
-                "Создайте несколько вариантов видео с метаданными.\n\n"
-            "🆔 **Введите ID ролика:**\n"
-                "(например: 001, 002, 123, или любое число)",
-                parse_mode='Markdown'
-            )
     
     async def handle_quick_filter(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка быстрого применения фильтра"""
@@ -4907,11 +4865,7 @@ def main():
     application.add_handler(MessageHandler(filters.Document.MimeType("video/mp4"), bot.handle_video))       # .MP4 files
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_user_metadata))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, bot.handle_metadata))
-    application.add_handler(CallbackQueryHandler(bot.handle_mode_selection, pattern="^mode_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_filter, pattern="^quickfilter_"))
-    application.add_handler(CallbackQueryHandler(bot.handle_count_selection, pattern="^count_"))
-    application.add_handler(CallbackQueryHandler(bot.handle_group_selection, pattern="^group_"))
-    application.add_handler(CallbackQueryHandler(bot.handle_filter_selection, pattern="^filter_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_approval, pattern="^quick_(approve|reject)_"))
     application.add_handler(CallbackQueryHandler(bot.handle_parameter_adjustment, pattern="^adjust_"))
     application.add_handler(CallbackQueryHandler(bot.handle_set_value, pattern="^setvalue_"))
