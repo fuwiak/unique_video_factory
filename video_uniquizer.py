@@ -11,6 +11,7 @@ from typing import Tuple, List, Optional
 import json
 from tqdm import tqdm
 import logging
+import subprocess
 
 # VidGear fallback
 try:
@@ -79,7 +80,7 @@ class VideoUniquizer:
         
         # Изменение скорости (используем переданный параметр или случайный)
         if speed_factor is None:
-            speed_factor = random.uniform(*self.speed_range)
+        speed_factor = random.uniform(*self.speed_range)
         
         print(f"⚡ Применяю изменение скорости: {speed_factor:.3f}x")
         
@@ -305,7 +306,7 @@ class VideoUniquizer:
         
         # Выбираем стиль эффекта (используем переданный или случайный)
         if effect_style is None:
-            effect_style = random.choice(list(self.social_effects.keys()))
+        effect_style = random.choice(list(self.social_effects.keys()))
         
         # Используем переданные параметры или дефолтные
         if effect_params is None:
@@ -399,7 +400,7 @@ class VideoUniquizer:
         
         # Выбираем стиль эффекта (используем переданный или случайный)
         if effect_style is None:
-            effect_style = random.choice(list(self.social_effects.keys()))
+        effect_style = random.choice(list(self.social_effects.keys()))
         
         # Используем переданные параметры или дефолтные
         if effect_params is None:
@@ -407,8 +408,9 @@ class VideoUniquizer:
         
         self._update_progress(f"🎨 Applying effect '{effect_style}': {effect_params}")
         
-        # Инициализируем VidGear writer
-        writer = WriteGear(output=output_path, logging=False, **output_params)
+        # Инициализируем VidGear writer (временный файл без аудио)
+        temp_output = output_path + ".tmp.mp4"
+        writer = WriteGear(output=temp_output, logging=False, **output_params)
         
         frame_count = 0
         start_time = time.time()
@@ -450,9 +452,22 @@ class VideoUniquizer:
         
         self._update_progress(f"✅ VidGear processing completed: {frame_count} frames in {total_time:.1f}s (avg: {avg_fps:.1f} fps)")
         
-        # Проверяем что файл создан и не пустой
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+        # Проверяем что временный файл создан и не пустой
+        if not os.path.exists(temp_output) or os.path.getsize(temp_output) == 0:
             raise ValueError("VidGear output file is empty or doesn't exist")
+        
+        # Микшируем оригинальный аудио-трек обратно
+        self._update_progress("🔊 Restoring original audio track...")
+        try:
+            self._mux_original_audio(temp_output, video_path, output_path)
+            os.remove(temp_output)
+        except Exception as e:
+            # Если не удалось смуксовать аудио, хотя бы вернем видео без аудио
+            logging.error(f"⚠️ Failed to restore audio: {e}")
+            try:
+                os.rename(temp_output, output_path)
+            except Exception:
+                pass
         
         return output_path
     
@@ -727,8 +742,9 @@ class VideoUniquizer:
         
         print(f"Применяем эффект '{effect_style}': {effect_params}")
         
-        # Инициализируем VidGear writer
-        writer = WriteGear(output=output_path, logging=False, **output_params)
+        # Инициализируем VidGear writer (временный файл без аудио)
+        temp_output = output_path + ".tmp.mp4"
+        writer = WriteGear(output=temp_output, logging=False, **output_params)
         
         frame_count = 0
         try:
@@ -754,11 +770,60 @@ class VideoUniquizer:
         
         print(f"✅ VidGear uniquization completed: {frame_count} frames")
         
-        # Проверяем что файл создан и не пустой
-        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+        # Проверяем что временный файл создан и не пустой
+        if not os.path.exists(temp_output) or os.path.getsize(temp_output) == 0:
             raise ValueError("VidGear output file is empty or doesn't exist")
         
+        # Микшируем оригинальный аудио-трек обратно
+        print("🔊 Restoring original audio track...")
+        logging.info("🔊 Restoring original audio track...")
+        try:
+            self._mux_original_audio(temp_output, input_path, output_path)
+            os.remove(temp_output)
+        except Exception as e:
+            logging.error(f"⚠️ Failed to restore audio: {e}")
+            try:
+                os.rename(temp_output, output_path)
+            except Exception:
+                pass
+        
         return output_path
+
+    def _mux_original_audio(self, video_without_audio: str, original_with_audio: str, final_output: str):
+        """
+        Объединяет обработанное видео (без аудио) с оригинальным аудио-треком.
+        Предпочтительно копируем дорожки без перекодирования.
+        """
+        # Команда ffmpeg: берем видео из первого файла, аудио из второго, обрезаем по минимальной длительности
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', video_without_audio,
+            '-i', original_with_audio,
+            '-c:v', 'copy',
+            '-c:a', 'copy',
+            '-map', '0:v:0',
+            '-map', '1:a:0?',
+            '-shortest',
+            final_output
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not os.path.exists(final_output):
+            # Fallback: если копирование не удалось, перекодируем аудио в AAC
+            cmd_fallback = [
+                'ffmpeg', '-y',
+                '-i', video_without_audio,
+                '-i', original_with_audio,
+                '-c:v', 'copy',
+                '-c:a', 'aac',
+                '-b:a', '128k',
+                '-map', '0:v:0',
+                '-map', '1:a:0?',
+                '-shortest',
+                final_output
+            ]
+            result2 = subprocess.run(cmd_fallback, capture_output=True, text=True)
+            if result2.returncode != 0 or not os.path.exists(final_output):
+                raise RuntimeError(f"ffmpeg mux failed: {result.stderr or result2.stderr}")
 
 
 def main():
