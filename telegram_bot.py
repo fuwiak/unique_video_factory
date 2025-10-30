@@ -3070,8 +3070,6 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             processed_videos.append(result)
                             completed += 1
                             logger.info(f"✅ Video {task['index']} processed successfully")
-                        else:
-                            logger.warning(f"⚠️ Video {task['index']} processing returned None")
                             
                             # Обновляем прогресс в Telegram с информацией о компрессии
                             progress = f"🎬 **ПРОГРЕСС ОБРАБОТКИ**\n\n"
@@ -3087,6 +3085,18 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             if result.get('split', False):
                                 progress += f"📹 **Разделение:** {result.get('chunks_count', 0)} частей\n"
                             
+                            progress += f"\n⏳ Осталось: {total - completed} видео..."
+                            
+                            await query.edit_message_text(progress)
+                        else:
+                            logger.warning(f"⚠️ Video {task['index']} processing returned None")
+                            completed += 1
+                            
+                            # Обновляем прогресс даже при неудаче
+                            progress = f"🎬 **ПРОГРЕСС ОБРАБОТКИ**\n\n"
+                            progress += f"✅ Обработано: {completed}/{total} видео\n"
+                            progress += f"⚠️ Видео {task['index']} вернуло None\n"
+                            progress += f"📁 Сохранено в: `{results_folder}`\n"
                             progress += f"\n⏳ Осталось: {total - completed} видео..."
                             
                             await query.edit_message_text(progress)
