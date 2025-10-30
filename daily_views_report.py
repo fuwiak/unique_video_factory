@@ -161,6 +161,25 @@ class DailyViewsReporter:
             logger.error(f"❌ Błąd pobierania wyświetleń: {e}")
             return None
     
+    def ensure_date_header(self, sheet):
+        """Ensure 'Дата добавления записи' header exists in sheet"""
+        try:
+            all_rows = sheet.get_all_values()
+            if len(all_rows) > 0:
+                headers = all_rows[0]
+                # Check if header exists
+                header_exists = any('Дата добавления' in str(h) for h in headers)
+                if not header_exists:
+                    # Add header
+                    headers.append('Дата добавления записи')
+                    sheet.update(values=[headers], range_name='A1')
+                    logger.info(f"📝 Dodano nagłówek 'Дата добавления записи' do arkusza")
+                    return True
+            return False
+        except Exception as e:
+            logger.error(f"❌ Błąd dodawania nagłówka: {e}")
+            return False
+    
     def add_daily_row(self, sheet, video_url: str, published_date: str = None):
         """Add a new daily row for a video to specific sheet"""
         try:
@@ -183,20 +202,24 @@ class DailyViewsReporter:
             # Use published date from video or provided date
             post_date = published_date or (video_data['published_at'][:10] if video_data.get('published_at') else datetime.now().strftime('%Y-%m-%d'))
             
-            # Prepare row data (match structure: Референс, Видео, Дата поста, Кол-во просмотров 1 день, Кол-во просмотров 1 нед, Кол-во просмотров 1 мес)
+            # Get current date and time for "Дата добавления записи"
+            current_datetime = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Prepare row data with additional column for "Дата добавления записи"
             row = [
                 '',  # Референс (puste)
                 video_url,  # Видео (URL)
                 post_date,  # Дата поста
                 video_data['views'],  # Кол-во просмотров 1 день (dzisiejsze wyświetlenia)
                 video_data['views'],  # Кол-во просмотров 1 нед (same for now)
-                video_data['views']   # Кол-во просмотров 1 мес (same for now)
+                video_data['views'],  # Кол-во просмотров 1 мес (same for now)
+                current_datetime  # Дата добавления записи (new column)
             ]
             
             # Add row to sheet (append to end)
             sheet.append_row(row)
             
-            logger.info(f"✅ Dodano wiersz: {video_url} - {video_data['views']} wyświetleń")
+            logger.info(f"✅ Dodano wiersz: {video_url} - {video_data['views']} wyświetleń - {current_datetime}")
             return True
             
         except Exception as e:
@@ -206,7 +229,7 @@ class DailyViewsReporter:
             return False
     
     def process_all_videos(self):
-        """Process all videos from all sheets (Нина, Лиза, Mutant)"""
+        """Process all videos from all sheets dynamically"""
         try:
             if not self.gc:
                 logger.error("❌ Google Sheets client nie jest zainicjalizowany")
@@ -215,14 +238,21 @@ class DailyViewsReporter:
             # Open spreadsheet
             spreadsheet = self.gc.open_by_key(self.sheet_id)
             
-            # List of sheets to process
-            sheet_names = ['Нина', 'Лиза', 'Mutant']
+            # Get all worksheets dynamically (will include Нина, Лиза, Mutant and any new ones)
+            all_sheets = spreadsheet.worksheets()
+            sheet_names = [sheet.title for sheet in all_sheets]
+            
+            logger.info(f"📋 Znaleziono {len(sheet_names)} arkuszy: {', '.join(sheet_names)}")
+            
             total_processed = 0
             
             for sheet_name in sheet_names:
                 try:
                     logger.info(f"📊 Przetwarzam arkusz: {sheet_name}")
                     sheet = spreadsheet.worksheet(sheet_name)
+                    
+                    # Ensure date header exists
+                    self.ensure_date_header(sheet)
                     
                     # Get all rows
                     all_rows = sheet.get_all_values()
