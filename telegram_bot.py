@@ -1372,7 +1372,13 @@ class TelegramVideoBot:
                         else:
                             result = self.social_stats_checker.check_youtube_stats(url)
                     elif platform.lower() == 'instagram':
-                        result = self.social_stats_checker.check_instagram_stats(url)
+                        # Sprawdzamy czy to Instagram Reel URL
+                        if '/reel' in url.lower() or '/reels/' in url.lower() or '/p/' in url.lower():
+                            logger.info(f"🎬 Bot wywołuje get_instagram_reel_data dla URL: {url}")
+                            result = self.social_stats_checker.get_instagram_reel_data(url)
+                            logger.info(f"📊 Bot otrzymał wynik z get_instagram_reel_data: {result}")
+                        else:
+                            result = self.social_stats_checker.check_instagram_stats(url)
                     elif platform.lower() == 'tiktok':
                         result = self.social_stats_checker.check_tiktok_stats(url)
                     elif platform.lower() == 'vk':

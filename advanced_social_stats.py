@@ -13,6 +13,9 @@ from typing import Dict, Optional, Any, List
 import logging
 from urllib.parse import urlparse, parse_qs
 import random
+import yt_dlp
+import os
+import tempfile
 
 # Konfiguracja logowania
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -511,6 +514,127 @@ class AdvancedSocialStatsChecker:
         """Wyciąganie username z URL Instagram"""
         match = re.search(r'instagram\.com/([^/?]+)', url)
         return match.group(1) if match else None
+    
+    def get_instagram_reel_data(self, reel_url: str, download_path: Optional[str] = None) -> Dict[str, Any]:
+        """Pobiera dane konkretnego Instagram Reel z URL i pobiera video używając yt-dlp"""
+        try:
+            logger.info(f"🎬 Pobieram dane Instagram Reel z URL: {reel_url}")
+            
+            # Wyciągamy reel ID z URL
+            reel_id = self._extract_instagram_reel_id(reel_url)
+            if not reel_id:
+                logger.error(f"❌ Nie można wyciągnąć reel ID z URL: {reel_url}")
+                return {'platform': 'Instagram', 'error': 'Nie można wyciągnąć reel ID z URL'}
+            
+            logger.info(f"✅ Reel ID: {reel_id}")
+            
+            # Pobieramy video używając yt-dlp
+            video_path = self._download_instagram_reel_with_ytdlp(reel_url, download_path)
+            
+            if video_path:
+                return {
+                    'platform': 'Instagram',
+                    'url': reel_url,
+                    'reel_id': reel_id,
+                    'video_path': video_path,
+                    'method': 'yt-dlp',
+                    'reels': [{
+                        'reel_id': reel_id,
+                        'url': reel_url,
+                        'video_path': video_path
+                    }]
+                }
+            else:
+                return {'platform': 'Instagram', 'error': 'Nie można pobrać video'}
+            
+        except Exception as e:
+            logger.error(f"❌ Błąd pobierania Instagram Reel: {e}")
+            return {'platform': 'Instagram', 'error': str(e)}
+    
+    def _extract_instagram_reel_id(self, url: str) -> Optional[str]:
+        """Wyciąganie reel ID z URL Instagram"""
+        logger.info(f"🔍 Wyciągam reel ID z URL: {url}")
+        
+        # Format: https://www.instagram.com/reels/DNhNjlYsQR4/
+        # Lub: https://www.instagram.com/reel/DNhNjlYsQR4/
+        patterns = [
+            r'instagram\.com/reels?/([^/?]+)',
+            r'instagram\.com/p/([^/?]+)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, url)
+            if match:
+                reel_id = match.group(1)
+                logger.info(f"✅ Znaleziono reel ID: {reel_id}")
+                return reel_id
+        
+        logger.warning(f"❌ Nie można wyciągnąć reel ID z URL: {url}")
+        return None
+    
+    def _download_instagram_reel_with_ytdlp(self, reel_url: str, download_path: Optional[str] = None) -> Optional[str]:
+        """Pobiera Instagram Reel video używając yt-dlp"""
+        try:
+            logger.info(f"📥 Pobieram Instagram Reel video z: {reel_url}")
+            
+            # Określamy ścieżkę do zapisu
+            if download_path is None:
+                # Tworzymy tymczasowy folder jeśli nie podano ścieżki
+                temp_dir = tempfile.mkdtemp()
+                download_path = os.path.join(temp_dir, 'instagram_reel_%(id)s.%(ext)s')
+            elif os.path.isdir(download_path):
+                # Jeśli podano folder, tworzymy nazwę pliku
+                download_path = os.path.join(download_path, 'instagram_reel_%(id)s.%(ext)s')
+            
+            ydl_opts = {
+                'outtmpl': download_path,
+                'quiet': True,  # Cichy tryb podobnie jak w przykładzie
+                'no_warnings': False,
+                'format': 'best',  # Pobieramy najlepszą jakość
+            }
+            
+            downloaded_file = None
+            
+            def download_hook(d):
+                """Hook do przechwycenia nazwy pobranego pliku"""
+                nonlocal downloaded_file
+                if d['status'] == 'finished':
+                    downloaded_file = d.get('filename')
+            
+            ydl_opts['progress_hooks'] = [download_hook]
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                # Pobieramy video
+                ydl.download([reel_url])
+                
+                # Jeśli mamy nazwę pliku z hooka, używamy jej
+                if downloaded_file and os.path.exists(downloaded_file):
+                    logger.info(f"✅ Pobrano video: {downloaded_file}")
+                    return downloaded_file
+                
+                # Fallback: szukamy pliku w folderze output
+                output_dir = os.path.dirname(download_path) if os.path.dirname(download_path) else '.'
+                
+                if os.path.exists(output_dir):
+                    import glob
+                    # Szukamy wszystkich plików video w folderze
+                    video_extensions = ['*.mp4', '*.webm', '*.mkv', '*.mov']
+                    files = []
+                    for ext in video_extensions:
+                        files.extend(glob.glob(os.path.join(output_dir, ext)))
+                    
+                    if files:
+                        # Wybieramy najnowszy plik
+                        video_file = max(files, key=os.path.getctime)
+                        logger.info(f"✅ Znaleziono pobrany video: {video_file}")
+                        return video_file
+                
+                logger.warning(f"⚠️ Nie znaleziono pobranego pliku")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Błąd pobierania Instagram Reel przez yt-dlp: {e}")
+            return None
     
     def check_tiktok_stats(self, profile_url: str) -> Dict[str, Any]:
         """Sprawdzanie statystyk TikTok z wieloma metodami"""
