@@ -186,15 +186,17 @@ class GoogleSheetsIntegration:
             platform_name = platform_data.get('platform', platform)
             user_name = platform_data.get('user_name', platform_data.get('username', ''))
             
-            # Sprawdzamy czy mamy clips/videos/shorts
+            # Sprawdzamy czy mamy clips/videos/shorts/reels
             has_clips_list = 'clips' in platform_data and isinstance(platform_data.get('clips'), list)
             has_videos_list = 'videos' in platform_data and isinstance(platform_data.get('videos'), list)
             has_shorts_list = 'shorts' in platform_data and isinstance(platform_data.get('shorts'), list)
+            has_reels_list = 'reels' in platform_data and isinstance(platform_data.get('reels'), list)
 
             logger.info(f"🔍 Sprawdzam strukturę danych:")
             logger.info(f"  - has_clips_list: {has_clips_list}")
             logger.info(f"  - has_videos_list: {has_videos_list}")
             logger.info(f"  - has_shorts_list: {has_shorts_list}")
+            logger.info(f"  - has_reels_list: {has_reels_list}")
             
             if has_clips_list:
                 logger.info(f"📹 Przetwarzam VK clips: {len(platform_data['clips'])} clips")
@@ -227,10 +229,11 @@ class GoogleSheetsIntegration:
             
             elif has_shorts_list:
                 # Przetwarzamy YouTube shorts
+                logger.info(f"📹 Przetwarzam YouTube shorts: {len(platform_data['shorts'])} shorts")
                 for short in platform_data['shorts']:
                     row = [
                         '',  # Референс (zawsze pusty)
-                        platform_data.get('url', ''),  # Видео (URL)
+                        short.get('url', platform_data.get('url', '')),  # Видео (URL)
                         short.get('published_at', current_date)[:10],  # Дата поста
                         str(short.get('views', 0)),    # Кол-во просмотров 1 день
                         str(short.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
@@ -238,9 +241,27 @@ class GoogleSheetsIntegration:
                     ]
                     rows.append(row)
             
+            elif has_reels_list:
+                # Przetwarzamy Instagram reels
+                logger.info(f"📹 Przetwarzam Instagram reels: {len(platform_data['reels'])} reels")
+                for reel in platform_data['reels']:
+                    logger.info(f"📹 Reel: {reel}")
+                    # Dla Instagram reels używamy URL z reels lub video_path jeśli dostępny
+                    video_url = reel.get('url', platform_data.get('url', ''))
+                    row = [
+                        '',  # Референс (zawsze pusty)
+                        video_url,  # Видео (URL)
+                        current_date,  # Дата поста (nie mamy daty z reels, używamy dzisiejszej)
+                        '0',  # Кол-во просмотров 1 день (nie mamy danych o wyświetleniach)
+                        '0',  # Кол-во просмотров 1 нед
+                        '0'   # Кол-во просмотров 1 мес
+                    ]
+                    logger.info(f"📝 Utworzono wiersz dla reel: {row}")
+                    rows.append(row)
+            
             else:
                 # Brak danych do przetworzenia
-                logger.warning(f"⚠️ Brak clips/videos/shorts dla {platform}")
+                logger.warning(f"⚠️ Brak clips/videos/shorts/reels dla {platform}")
                 logger.info(f"🔍 Dostępne klucze: {list(platform_data.keys())}")
         
         logger.info(f"📊 Łącznie utworzono {len(rows)} wierszy")
