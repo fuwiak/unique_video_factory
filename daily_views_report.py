@@ -6,11 +6,12 @@ import os
 import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import requests
 from dotenv import load_dotenv
 import gspread
 from google.oauth2.service_account import Credentials
+from advanced_social_stats import AdvancedSocialStatsChecker
 
 # Ładujemy zmienne środowiskowe
 load_dotenv()
@@ -34,6 +35,9 @@ class DailyViewsReporter:
         
         # Inicjalizacja Google Sheets
         self.init_google_sheets()
+        
+        # Inicjalizacja AdvancedSocialStatsChecker dla innych platform
+        self.social_stats_checker = AdvancedSocialStatsChecker()
     
     def init_google_sheets(self):
         """Inicjalizacja Google Sheets"""
@@ -113,52 +117,126 @@ class DailyViewsReporter:
             logger.error(f"❌ Błąd inicjalizacji Google Sheets ze zmiennych środowiskowych: {e}")
             return False
     
-    def get_video_id_from_url(self, url: str) -> str:
-        """Extract video ID from YouTube URL"""
+    def get_platform_from_url(self, url: str) -> str:
+        """Rozpoznaje platformę z URL"""
+        url_lower = url.lower()
+        if 'youtube.com' in url_lower or 'youtu.be' in url_lower:
+            return 'youtube'
+        elif 'instagram.com' in url_lower:
+            return 'instagram'
+        elif 'vk.com' in url_lower:
+            return 'vk'
+        else:
+            return 'unknown'
+    
+    def get_video_id_from_url(self, url: str) -> Optional[str]:
+        """Extract video ID from URL (YouTube, Instagram, VK)"""
         try:
-            if '/shorts/' in url:
-                # YouTube Shorts format: https://www.youtube.com/shorts/VIDEO_ID
-                video_id = url.split('/shorts/')[-1].split('?')[0]
-            elif 'watch?v=' in url:
-                # Standard YouTube format: https://www.youtube.com/watch?v=VIDEO_ID
-                video_id = url.split('watch?v=')[-1].split('&')[0]
+            platform = self.get_platform_from_url(url)
+            
+            if platform == 'youtube':
+                if '/shorts/' in url:
+                    video_id = url.split('/shorts/')[-1].split('?')[0]
+                elif 'watch?v=' in url:
+                    video_id = url.split('watch?v=')[-1].split('&')[0]
+                else:
+                    return None
+                return video_id
+            elif platform == 'instagram':
+                # Instagram Reels format: https://www.instagram.com/reels/VIDEO_ID/
+                reel_id = self.social_stats_checker._extract_instagram_reel_id(url)
+                return reel_id
+            elif platform == 'vk':
+                # VK Clips format: https://vk.com/clips/id1069245351?z=clip1069245351_VIDEO_ID
+                video_id = self.social_stats_checker._extract_vk_video_id(url)
+                return video_id
             else:
-                logger.error(f"❌ Nieznany format URL: {url}")
+                logger.warning(f"⚠️ Nieznana platforma dla URL: {url}")
                 return None
-            return video_id
         except Exception as e:
             logger.error(f"❌ Błąd parsowania URL: {e}")
             return None
     
-    def get_video_views(self, video_id: str) -> Dict[str, Any]:
-        """Get current views for a video"""
+    def get_video_views(self, url: str, video_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Get current views for a video from any platform"""
         try:
-            url = "https://www.googleapis.com/youtube/v3/videos"
-            params = {
-                'part': 'statistics,snippet',
-                'id': video_id,
-                'key': self.youtube_api_key
-            }
+            platform = self.get_platform_from_url(url)
             
-            response = requests.get(url, params=params, timeout=10)
-            if response.status_code != 200:
-                logger.error(f"❌ Błąd API YouTube: {response.status_code}")
+            if platform == 'youtube':
+                if not video_id:
+                    video_id = self.get_video_id_from_url(url)
+                if not video_id:
+                    return None
+                    
+                youtube_url = "https://www.googleapis.com/youtube/v3/videos"
+                params = {
+                    'part': 'statistics,snippet',
+                    'id': video_id,
+                    'key': self.youtube_api_key
+                }
+                
+                response = requests.get(youtube_url, params=params, timeout=10)
+                if response.status_code != 200:
+                    logger.error(f"❌ Błąd API YouTube: {response.status_code}")
+                    return None
+                
+                data = response.json()
+                if not data.get('items'):
+                    logger.error(f"❌ Nie znaleziono wideo: {video_id}")
+                    return None
+                
+                video = data['items'][0]
+                return {
+                    'video_id': video_id,
+                    'views': int(video['statistics'].get('viewCount', 0)),
+                    'title': video['snippet'].get('title', ''),
+                    'published_at': video['snippet'].get('publishedAt', '')
+                }
+            
+            elif platform == 'instagram':
+                # Pobieramy dane Instagram Reel
+                logger.info(f"📊 Pobieram dane Instagram Reel: {url}")
+                reel_data = self.social_stats_checker.get_instagram_reel_data(url)
+                
+                if 'error' in reel_data:
+                    logger.warning(f"⚠️ Błąd pobierania Instagram Reel: {reel_data['error']}")
+                    return None
+                
+                # Instagram nie zwraca wyświetleń przez yt-dlp, więc używamy 0
+                # W przyszłości można dodać scraping lub API
+                reel = reel_data.get('reels', [{}])[0] if reel_data.get('reels') else {}
+                return {
+                    'video_id': reel_data.get('reel_id', ''),
+                    'views': 0,  # Instagram nie udostępnia wyświetleń publicznie
+                    'title': f"Instagram Reel {reel_data.get('reel_id', '')}",
+                    'published_at': datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                }
+            
+            elif platform == 'vk':
+                # Pobieramy dane VK Clip
+                logger.info(f"📊 Pobieram dane VK Clip: {url}")
+                clip_data = self.social_stats_checker.get_vk_clip_data(url)
+                
+                if 'error' in clip_data:
+                    logger.warning(f"⚠️ Błąd pobierania VK Clip: {clip_data['error']}")
+                    return None
+                
+                clip = clip_data.get('clips', [{}])[0] if clip_data.get('clips') else {}
+                return {
+                    'video_id': clip.get('video_id', ''),
+                    'views': clip.get('views', 0),
+                    'title': clip.get('title', f"VK Clip {clip.get('video_id', '')}"),
+                    'published_at': clip.get('date', datetime.now().strftime('%Y-%m-%d'))
+                }
+            
+            else:
+                logger.warning(f"⚠️ Nieobsługiwana platforma: {platform}")
                 return None
-            
-            data = response.json()
-            if not data.get('items'):
-                logger.error(f"❌ Nie znaleziono wideo: {video_id}")
-                return None
-            
-            video = data['items'][0]
-            return {
-                'video_id': video_id,
-                'views': int(video['statistics'].get('viewCount', 0)),
-                'title': video['snippet'].get('title', ''),
-                'published_at': video['snippet'].get('publishedAt', '')
-            }
+                
         except Exception as e:
             logger.error(f"❌ Błąd pobierania wyświetleń: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def ensure_date_header(self, sheet):
@@ -187,14 +265,8 @@ class DailyViewsReporter:
                 logger.error("❌ Arkusz nie jest zainicjalizowany")
                 return False
             
-            # Get video ID from URL
-            video_id = self.get_video_id_from_url(video_url)
-            if not video_id:
-                logger.warning(f"⚠️ Nie można wyodrębnić video_id z URL: {video_url}")
-                return False
-            
-            # Get current views
-            video_data = self.get_video_views(video_id)
+            # Get current views (metoda get_video_views przyjmuje teraz URL bezpośrednio)
+            video_data = self.get_video_views(video_url)
             if not video_data:
                 logger.warning(f"⚠️ Nie można pobrać danych dla: {video_url}")
                 return False
