@@ -18,6 +18,7 @@ import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import websockets
 import aiohttp
+import schedule
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -4925,6 +4926,44 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_quick_done, pattern="^quick_done$"))
     application.add_handler(CallbackQueryHandler(bot.handle_restart, pattern="^restart$"))
     application.add_handler(CallbackQueryHandler(bot.handle_menu_action, pattern="^menu_"))
+    
+    # Запускаем scheduler dla daily_views_report
+    def run_scheduler():
+        """Run scheduler in background thread"""
+        # Ustawiamy godzinę uruchomienia (UTC) - domyślnie 00:00 UTC
+        # Można zmienić przez zmienną środowiskową DAILY_REPORT_TIME (format: "HH:MM")
+        report_time = os.getenv('DAILY_REPORT_TIME', '00:00')
+        
+        logger.info(f"⏰ Daily views report scheduled for {report_time} UTC every day")
+        
+        schedule.every().day.at(report_time).do(run_daily_report_task)
+        
+        # Uruchamiamy scheduler w pętli
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Sprawdzamy co minutę
+    
+    def run_daily_report_task():
+        """Task do uruchomienia daily views report"""
+        try:
+            logger.info("📊 Uruchamiam codzienny raport wyświetleń...")
+            from daily_views_report import DailyViewsReporter
+            
+            reporter = DailyViewsReporter()
+            if reporter.gc:
+                reporter.process_all_videos()
+                logger.info("✅ Codzienny raport zakończony pomyślnie")
+            else:
+                logger.error("❌ Nie można połączyć z Google Sheets")
+        except Exception as e:
+            logger.error(f"❌ Błąd podczas uruchamiania codziennego raportu: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+    
+    # Uruchamiamy scheduler w osobnym wątku
+    scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
+    scheduler_thread.start()
+    logger.info("✅ Scheduler dla daily views report uruchomiony")
     
     # Запускаем бота
     print("🤖 Запускаем Telegram бота...")
