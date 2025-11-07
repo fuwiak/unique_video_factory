@@ -16,6 +16,7 @@ import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
+import re
 import websockets
 import aiohttp
 import schedule
@@ -648,6 +649,8 @@ class TelegramVideoBot:
                     status_text += f"**Папка:** {status['folder_name']}\n"
                 if 'video_id' in status:
                     status_text += f"**ID ролика:** {status['video_id']}\n"
+                if 'video_date' in status and status['video_date']:
+                    status_text += f"**Дата публикации:** {status['video_date']}\n"
             else:
                 status_text = "📊 **СТАТУС ОБРАБОТКИ**\n\n"
                 status_text += "✅ Нет активной обработки\n\n"
@@ -1134,9 +1137,33 @@ class TelegramVideoBot:
         
         # Если еще не ввели ID ролика
         if user_states[user_id]['video_id'] is None:
-            user_states[user_id]['video_id'] = text
+            pattern = re.compile(r"^(\d{2}\.\d{2}\.\d{4})\s*\(\s*(id_[\w-]+)\s*\)$", re.IGNORECASE)
+            match = pattern.match(text)
+            if not match:
+                await update.message.reply_text(
+                    "❌ Неверный формат. Используйте `05.11.2025 (id_12345)`",
+                    parse_mode='Markdown'
+                )
+                return
+
+            date_str, video_id_raw = match.groups()
+
+            try:
+                # Проверяем корректность даты
+                datetime.strptime(date_str, "%d.%m.%Y")
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ Неверная дата. Используйте формат `дд.мм.гггг`, например `05.11.2025 (id_12345)`",
+                    parse_mode='Markdown'
+                )
+                return
+
+            video_id = video_id_raw.lower()
+            user_states[user_id]['video_id'] = video_id
+            user_states[user_id]['video_date'] = date_str
+
             await update.message.reply_text(
-                f"✅ ID ролика: **{text}**\n\n"
+                f"✅ Дата публикации и ID: **{date_str} ({video_id})**\n\n"
                 "👤 **Введите имя блогера:**\n"
                 "(например: Нина, Рэйчел, или новое имя)",
                 parse_mode='Markdown'
@@ -1173,6 +1200,7 @@ class TelegramVideoBot:
                 # Сообщение с подтверждением и выбором группы фильтров
                 confirm_text = (
                     f"✅ Настройки сохранены:\n"
+                    f"📅 Дата публикации: **{user_states[user_id].get('video_date', 'не указана')}**\n"
                     f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
                     f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
                     f"📁 Папка: **{text}**\n\n"
@@ -1739,151 +1767,93 @@ class TelegramVideoBot:
         )
     
     async def move_to_approved_folder(self, video_data, approval_id):
-        """Перемещение файла в папку approved
-        
-        Returns:
-            tuple: (success: bool, error_message: str)
-        """
+        """Перемещение файла в папку approved"""
         try:
             if not self.yandex_disk:
                 return False, "⚠️ Yandex Disk не настроен. Проверьте настройки бота."
-            
-            # Получаем информацию о блогере и папке
+
             blogger_name = video_data.get('blogger_name', 'unknown')
             folder_name = video_data.get('folder_name', 'default')
-            
-            # Создаем путь к папке approved
+
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
             content_folder = f"{blogger_folder}/{folder_name}"
             approved_folder = f"{content_folder}/approved"
-            
-            # Создаем папку approved, если не существует
+
             try:
-                if not self.yandex_disk.exists(approved_folder):
-                    self.yandex_disk.mkdir(approved_folder)
-                    logger.info(f"Создана папка approved: {approved_folder}")
+                for folder in [base_folder, blogger_folder, content_folder, approved_folder]:
+                    if not self.yandex_disk.exists(folder):
+                        self.yandex_disk.mkdir(folder)
+                        logger.info(f"Создана папка: {folder}")
             except Exception as e:
-                error_msg = f"Не удалось создать папку approved: {str(e)}"
+                error_msg = f"Не удалось создать структуру папок: {str(e)}"
                 logger.error(error_msg)
                 return False, error_msg
-            
-            # Создаем подпапку для конкретного видео
-            video_folder = f"{approved_folder}/{approval_id}"
-            try:
-                if not self.yandex_disk.exists(video_folder):
-                    self.yandex_disk.mkdir(video_folder)
-                    logger.info(f"Создана папка видео: {video_folder}")
-            except Exception as e:
-                error_msg = f"Не удалось создать папку видео: {str(e)}"
-                logger.error(error_msg)
-                return False, error_msg
-            
-            # Получаем путь к файлу на Yandex Disk
+
+            video_id = video_data.get('video_id', 'id_unknown')
+            video_date = video_data.get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            filename_base = f"{video_date} ({video_id})"
+            approved_path = f"{approved_folder}/{filename_base}.mp4"
+
             source_remote_path = video_data.get('yandex_remote_path')
             logger.info(f"Yandex путь из данных: {source_remote_path}")
-            
-            # Если путь не найден, ищем файл в новой структуре папок
+
             if not source_remote_path:
-                # Ищем в новой структуре: Медиабанк/Команда 1/Мая/videos/run_timestamp/
                 try:
-                    # Получаем информацию о блогере и папке
-                    blogger_name = video_data.get('blogger_name', 'unknown')
-                    folder_name = video_data.get('folder_name', 'default')
-                    
-                    # Создаем путь к папке контента
                     content_folder = f"{base_folder}/{blogger_name}/{folder_name}"
-                    
                     if self.yandex_disk.exists(content_folder):
-                        content_contents = list(self.yandex_disk.listdir(content_folder))
-                        for run_folder in content_contents:
-                            if run_folder['type'] == 'dir' and run_folder['name'].startswith('run_'):
-                                run_path = f"{content_folder}/{run_folder['name']}"
-                                run_contents = list(self.yandex_disk.listdir(run_path))
-                                for file_item in run_contents:
-                                    if file_item['name'].endswith('.mp4'):
-                                        source_remote_path = f"{run_path}/{file_item['name']}"
-                                        logger.info(f"Найден файл в новой структуре: {source_remote_path}")
+                        for item in self.yandex_disk.listdir(content_folder):
+                            if item['type'] == 'file' and item['name'].endswith('.mp4'):
+                                source_remote_path = f"{content_folder}/{item['name']}"
+                                break
+                            if item['type'] == 'dir' and item['name'].startswith('run_'):
+                                run_path = f"{content_folder}/{item['name']}"
+                                for sub in self.yandex_disk.listdir(run_path):
+                                    if sub['type'] == 'file' and sub['name'].endswith('.mp4'):
+                                        source_remote_path = f"{run_path}/{sub['name']}"
                                         break
                                 if source_remote_path:
                                     break
                 except Exception as e:
-                    logger.error(f"Ошибка поиска файла в новой структуре: {e}")
-                    source_remote_path = None
-            
+                    logger.error(f"Ошибка поиска видео в структуре Yandex Disk: {e}")
+
+            def ensure_unique(path: str) -> str:
+                if not self.yandex_disk.exists(path):
+                    return path
+                base, ext = os.path.splitext(path)
+                unique_id = int(time.time())
+                return f"{base}_{unique_id}{ext}"
+
             if source_remote_path:
-                # Перемещаем файл с Yandex Disk
-                approved_path = f"{video_folder}/video.mp4"
                 try:
-                    # Сначала копируем файл (с обработкой дубликатов)
-                    try:
-                        self.yandex_disk.copy(source_remote_path, approved_path)
-                        logger.info(f"Файл скопирован с {source_remote_path} в {approved_path}")
-                    except Exception as copy_error:
-                        error_str = str(copy_error)
-                        # Если файл уже существует, используем уникальное имя
-                        if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
-                            import time
-                            unique_id = int(time.time())
-                            approved_path = f"{video_folder}/video_{unique_id}.mp4"
-                            try:
-                                self.yandex_disk.copy(source_remote_path, approved_path)
-                                logger.info(f"Файл скопирован с уникальным именем: {approved_path}")
-                            except Exception as retry_error:
-                                error_msg = self.translate_yandex_error(retry_error)
-                                logger.error(error_msg)
-                                # Fallback на upload локального файла
-                                raise retry_error
-                        else:
-                            raise copy_error
-                    
-                    # Затем удаляем исходный файл
+                    target_path = ensure_unique(approved_path)
+                    self.yandex_disk.copy(source_remote_path, target_path)
+                    logger.info(f"Файл скопирован с {source_remote_path} в {target_path}")
                     try:
                         self.yandex_disk.remove(source_remote_path)
                         logger.info(f"Исходный файл удален: {source_remote_path}")
                     except Exception as remove_error:
                         logger.warning(f"Не удалось удалить исходный файл: {remove_error}")
-                        # Это не критично - продолжаем
-                    
+                    approved_path = target_path
                 except Exception as move_error:
-                    # Переводим ошибку в понятное сообщение
-                    error_msg = self.translate_yandex_error(move_error)
-                    logger.error(f"Ошибка перемещения на Yandex Disk: {move_error}")
-                    # Fallback - загружаем локальный файл
-                    source_path = video_data.get('video_path')
-                    if source_path and os.path.exists(source_path):
-                        try:
-                            self.yandex_disk.upload(source_path, approved_path)
-                            logger.info(f"Файл загружен локально: {source_path}")
-                        except Exception as upload_error:
-                            # Переводим ошибку в понятное сообщение
-                            error_msg = self.translate_yandex_error(upload_error)
-                            logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
-                            return False, error_msg
-                    else:
-                        error_msg = f"Локальный файл не найден: {source_path}"
-                        logger.error(error_msg)
-                        return False, error_msg
-            else:
-                # Fallback - загружаем локальный файл
+                    logger.error(f"Ошибка копирования на Yandex Disk: {move_error}")
+                    source_remote_path = None
+
+            if not source_remote_path:
                 source_path = video_data.get('video_path')
-                logger.info(f"Локальный путь из данных: {source_path}")
-                if source_path and os.path.exists(source_path):
-                    approved_path = f"{video_folder}/video.mp4"
-                    try:
-                        self.yandex_disk.upload(source_path, approved_path)
-                        logger.info(f"Файл загружен локально: {source_path}")
-                    except Exception as upload_error:
-                        # Переводим ошибку в понятное сообщение
-                        error_msg = self.translate_yandex_error(upload_error)
-                        logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
-                        return False, error_msg
-                else:
+                if not source_path or not os.path.exists(source_path):
                     error_msg = f"Локальный файл не найден: {source_path or 'путь не указан'}"
                     logger.error(error_msg)
                     return False, error_msg
-            
-            # Создаем файл с метаданными
+                try:
+                    approved_path = ensure_unique(approved_path)
+                    self.yandex_disk.upload(source_path, approved_path)
+                    logger.info(f"Файл загружен локально: {source_path}")
+                except Exception as upload_error:
+                    error_msg = self.translate_yandex_error(upload_error)
+                    logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
+                    return False, error_msg
+
             metadata_content = f"""
 ID: {approval_id}
 Пользователь: {video_data.get('user_name', 'Неизвестно')}
@@ -1892,44 +1862,48 @@ ID: {approval_id}
 Блогер: {video_data.get('blogger_name', 'Неизвестно')}
 Папка: {video_data.get('folder_name', 'Неизвестно')}
 ID ролика: {video_data.get('video_id', 'Неизвестно')}
-            """.strip()
-            
-            # Добавляем метаданные от менеджера, если они есть
+Дата публикации: {video_date}
+""".strip()
+
             if 'metadata' in video_data:
                 metadata_content += f"""
-Дата публикации: {video_data['metadata']['publish_date']}
+\nДата публикации (менеджер): {video_data['metadata']['publish_date']}
 ID сценария: {video_data['metadata']['scenario_id']}
 Описание: {video_data['metadata']['description']}
 Отправлено в чатбот: {video_data['metadata']['sent_at']}
-                """.strip()
-            
-            # Сохраняем метаданные как текстовый файл
-            metadata_path = f"{video_folder}/metadata.txt"
+""".rstrip()
+
+            metadata_path = f"{approved_folder}/{filename_base}.txt"
             with open("temp_metadata.txt", "w", encoding="utf-8") as f:
                 f.write(metadata_content)
-            
+
             self.yandex_disk.upload("temp_metadata.txt", metadata_path)
-            
-            # Удаляем временный файл
             os.remove("temp_metadata.txt")
-            
-            # Удаляем локальный файл после успешного перемещения (только если он существует)
+
+            source_path = video_data.get('video_path')
             try:
                 if source_path and os.path.exists(source_path):
                     os.remove(source_path)
                     logger.info(f"Локальный файл удален: {source_path}")
-            except Exception as delete_error:
-                logger.warning(f"Не удалось удалить локальный файл: {delete_error}")
-            
+            except Exception as e:
+                logger.warning(f"Не удалось удалить локальный файл: {e}")
+
+            video_data['status'] = 'approved'
+            video_data['approved_at'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            video_data['approved_by'] = video_data.get('approved_by', 'manager')
+            video_data['approved_path'] = approved_path
+            video_data['metadata_path'] = metadata_path
+
             logger.info(f"Видео {approval_id} перемещено в approved папку")
             logger.info(f"Финальный путь: {approved_path}")
-            logger.info(f"Публичная ссылка: {video_data.get('yandex_public_url', 'Не создана')}")
+
             return True, ""
-            
+
         except Exception as e:
-            error_msg = f"Неожиданная ошибка при перемещении в approved папку: {str(e)}"
-            logger.error(error_msg)
-            return False, error_msg
+            logger.error(f"Неожиданная ошибка при перемещении в approved папку: {str(e)}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            return False, f"Неожиданная ошибка: {str(e)}"
     
     async def handle_video(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработка полученного видео"""
@@ -2049,7 +2023,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
             'start_time': datetime.now().strftime('%H:%M:%S'),
             'blogger_name': None,
             'folder_name': None,
-            'video_id': None
+            'video_id': None,
+            'video_date': None
         }
         
         # Показываем меню выбора режима
@@ -2122,8 +2097,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
             await query.edit_message_text(
                 "📦 **РАСШИРЕННЫЙ РЕЖИМ**\n\n"
                 "Создайте несколько вариантов видео с метаданными.\n\n"
-            "🆔 **Введите ID ролика:**\n"
-                "(например: 001, 002, 123, или любое число)",
+                "🆔 **Введите дату и ID ролика:**\n"
+                "Формат: `05.11.2025 (id_12345)`",
                 parse_mode='Markdown'
             )
     
@@ -2356,8 +2331,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
         await query.edit_message_text(
             "💾 **Сохранение на Yandex Disk**\n\n"
             "Для сохранения нужны метаданные.\n\n"
-            "🆔 **Введите ID ролика:**\n"
-            "(например: 001, 002, 123)",
+            "🆔 **Введите дату и ID ролика:**\n"
+            "Формат: `05.11.2025 (id_12345)`",
             parse_mode='Markdown'
         )
     
@@ -2413,28 +2388,28 @@ ID сценария: {video_data['metadata']['scenario_id']}
             )
             
             # Получаем метаданные
-            video_id = user_states[user_id]['video_id']
+            video_id = user_states[user_id]['video_id'] or 'id_unknown'
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
             blogger_name = user_states[user_id]['blogger_name']
             folder_name = user_states[user_id]['folder_name']
             filter_name = quick_result['filter_name']
-            
-            # Создаем путь на Yandex Disk
-            upload_date = datetime.now().strftime('%Y%m%d')
-            filename = f"{upload_date}_{video_id}_quick.mp4"
-            
+
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
             content_folder = f"{blogger_folder}/{folder_name}"
-            # Используем ID ролика как имя папки вместо "videos"
-            video_folder = f"{content_folder}/{video_id}"
-            
+
             # Загружаем на Yandex Disk
             if self.yandex_disk:
                 # Создаем папки если не существуют
-                if not self.yandex_disk.exists(video_folder):
-                    self.yandex_disk.mkdir(video_folder)
-                
-                remote_path = f"{video_folder}/{filename}"
+                try:
+                    for folder in [base_folder, blogger_folder, content_folder]:
+                        if not self.yandex_disk.exists(folder):
+                            self.yandex_disk.mkdir(folder)
+                            logger.info(f"Создана папка: {folder}")
+                except Exception as mkdir_error:
+                    logger.error(f"Ошибка создания папок: {mkdir_error}")
+
+                remote_path = f"{content_folder}/{video_date} ({video_id}).mp4"
                 
                 # Загружаем файл (с обработкой дубликатов)
                 try:
@@ -2443,16 +2418,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 except Exception as upload_error:
                     error_str = str(upload_error)
                     # Если файл уже существует, используем уникальное имя
-                    if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
+                    if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "diskresourcealreadyexistserror" in error_str.lower():
                         # Создаем уникальное имя с timestamp
                         import time
                         unique_id = int(time.time())
-                        filename_parts = filename.rsplit('.', 1)
-                        if len(filename_parts) == 2:
-                            new_filename = f"{filename_parts[0]}_{unique_id}.{filename_parts[1]}"
-                        else:
-                            new_filename = f"{filename}_{unique_id}"
-                        remote_path = f"{video_folder}/{new_filename}"
+                        name, ext = os.path.splitext(f"{video_date} ({video_id}).mp4")
+                        new_filename = f"{name}_{unique_id}{ext}"
+                        remote_path = f"{content_folder}/{new_filename}"
                         try:
                             self.yandex_disk.upload(result_path, remote_path)
                             logger.info(f"Файл загружен с уникальным именем: {remote_path}")
@@ -3025,10 +2997,11 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Создаем задачи для параллельной обработки
             tasks = []
             video_id = user_states[user_id].get('video_id', 'unknown')
-            upload_date = datetime.now().strftime('%Y%m%d')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
             
             for i, filter_id in enumerate(selected_filters):
-                output_filename = f"{upload_date}_{video_id}_{i+1}.mp4"
+                filename_base = f"{video_date} ({video_id})"
+                output_filename = f"{filename_base}_{i+1}.mp4"
                 output_path = results_folder / output_filename
                 
                 # Получаем настройки фильтра
@@ -3053,7 +3026,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'output_path': str(output_path),
                     'filter_info': filter_info,
                     'video_id': video_id,
-                    'upload_date': upload_date,
+                    'video_date': video_date,
                     'chat_id': query.message.chat_id,
                     'message_id': query.message.message_id,
                     'bot': context.bot,
@@ -3196,7 +3169,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'blogger_name': user_states[user_id].get('blogger_name', 'unknown'),
                     'folder_name': user_states[user_id].get('folder_name', 'default'),
                     'video_id': user_states[user_id].get('video_id', 'unknown'),
-                    'upload_date': video_data.get('upload_date', datetime.now().strftime('%Y%m%d'))
+                    'video_date': user_states[user_id].get('video_date', datetime.now().strftime('%Y-%m-%d')),
                 }
                 
                 # Логируем для отладки
@@ -3488,8 +3461,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 'path': result_path,
                 'filter_name': task['filter_info']['name'],
                 'filter_id': task['filter_id'],
-                'video_id': task.get('video_id', 'unknown'),
-                'upload_date': datetime.now().strftime('%Y%m%d'),
+                'video_id': task.get('video_id', 'id_unknown'),
+                'video_date': task.get('video_date', datetime.now().strftime('%d.%m.%Y')),
                 'compressed': file_size_mb > 20,  # Если файл был больше 20MB
                 'split': file_size_mb > 50,  # Если файл был больше 50MB
                 'chunks_count': len(chunks) if file_size_mb > 50 else 1,
@@ -3950,12 +3923,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     raise e
             
             # Создаем имя файла с датой и ID ролика
-            video_id = user_states[user_id].get('video_id', 'unknown')
-            upload_date = datetime.now().strftime('%Y%m%d')
+            video_id = user_states[user_id].get('video_id', 'id_unknown')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
             unique_id = str(uuid.uuid4())[:8]
-            
+
             input_filename = f"input_{unique_id}.mp4"
-            output_filename = f"{upload_date}_{video_id}.mp4"
+            output_filename = f"{video_date} ({video_id}).mp4"
             
             input_path = self.temp_dir / input_filename
             output_path = self.temp_dir / output_filename
@@ -4486,82 +4459,45 @@ ID сценария: {video_data['metadata']['scenario_id']}
     async def upload_to_yandex_disk(self, file_path: str, user_id: int, filter_id: str) -> tuple:
         """Загрузка файла на Yandex Disk"""
         try:
-            logger.info(f"🚀 Начинаю загрузку файла на Yandex Disk: {file_path}")
-            
-            # Получаем информацию о блогере и папке
+            logger.info(f"🚀 Начинаю загрузку файла на Yandex Disk: {file_path} (filter: {filter_id})")
+
             blogger_name = user_states[user_id].get('blogger_name', f'user_{user_id}')
-            folder_name = user_states[user_id].get('folder_name', 'default')
-            
-            logger.info(f"👤 Блогер: {blogger_name}, 📁 Папка: {folder_name}")
-            
-            # Создаем структуру папок
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            folder_name = user_states[user_id].get('folder_name') or 'default'
+            video_id = user_states[user_id].get('video_id') or 'id_unknown'
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
+
+            logger.info(f"👤 Блогер: {blogger_name}, 📁 Папка: {folder_name}, 🆔 ID: {video_id}, 📅 Дата: {video_date}")
+
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
             content_folder = f"{blogger_folder}/{folder_name}"
-            remote_folder = f"{content_folder}/run_{timestamp}"
-            
-            # Создаем папки пошагово
+
+            # Создаем необходимые папки
             try:
-                # Создаем базовую папку, если не существует
-                if not self.yandex_disk.exists(base_folder):
-                    self.yandex_disk.mkdir(base_folder)
-                    logger.info(f"Создана базовая папка: {base_folder}")
-                
-                # Создаем папку блогера, если не существует
-                if not self.yandex_disk.exists(blogger_folder):
-                    self.yandex_disk.mkdir(blogger_folder)
-                    logger.info(f"Создана папка блогера: {blogger_folder}")
-                
-                # Создаем папку контента, если не существует
-                if not self.yandex_disk.exists(content_folder):
-                    self.yandex_disk.mkdir(content_folder)
-                    logger.info(f"Создана папка контента: {content_folder}")
-                
-                # Создаем папку для конкретного запуска
-                if not self.yandex_disk.exists(remote_folder):
-                    self.yandex_disk.mkdir(remote_folder)
-                    logger.info(f"Создана папка запуска: {remote_folder}")
-                
+                for folder in [base_folder, blogger_folder, content_folder]:
+                    if not self.yandex_disk.exists(folder):
+                        self.yandex_disk.mkdir(folder)
+                        logger.info(f"Создана папка: {folder}")
             except Exception as mkdir_error:
                 logger.error(f"Ошибка создания папок: {mkdir_error}")
-                # Пробуем создать папку заново
-                try:
-                    self.yandex_disk.mkdir(remote_folder)
-                except:
-                    pass
-            
-            # Создаем имя файла с датой и ID ролика
-            video_id = user_states[user_id].get('video_id', 'unknown')
-            upload_date = datetime.now().strftime('%Y%m%d')
-            filename = f"{upload_date}_{video_id}.mp4"
-            remote_path = f"{remote_folder}/{filename}"
-            
-            # Проверяем существование локального файла
+
             if not os.path.exists(file_path):
                 logger.error(f"❌ Локальный файл не существует: {file_path}")
                 return None, None
-            
-            logger.info(f"📁 Локальный файл существует: {file_path}")
-            logger.info(f"📁 Размер файла: {os.path.getsize(file_path)} bytes")
-            
-            # Загружаем файл (с обработкой дубликатов)
+
+            filename = f"{video_date} ({video_id}).mp4"
+            remote_path = f"{content_folder}/{filename}"
+
             logger.info(f"⬆️ Загружаю файл на Yandex Disk: {remote_path}")
             try:
                 self.yandex_disk.upload(file_path, remote_path)
             except Exception as upload_error:
                 error_str = str(upload_error)
-                # Если файл уже существует, используем уникальное имя
-                if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "DiskResourceAlreadyExistsError" in error_str:
-                    # Создаем уникальное имя с timestamp
-                    import time
+                if "already exists" in error_str.lower() or "уже существует" in error_str.lower() or "diskresourcealreadyexistserror" in error_str.lower():
                     unique_id = int(time.time())
-                    filename_parts = filename.rsplit('.', 1)
-                    if len(filename_parts) == 2:
-                        new_filename = f"{filename_parts[0]}_{unique_id}.{filename_parts[1]}"
-                    else:
-                        new_filename = f"{filename}_{unique_id}"
-                    remote_path = f"{remote_folder}/{new_filename}"
+                    name, ext = os.path.splitext(filename)
+                    new_filename = f"{name}_{unique_id}{ext}"
+                    remote_path = f"{content_folder}/{new_filename}"
                     try:
                         self.yandex_disk.upload(file_path, remote_path)
                         logger.info(f"Файл загружен с уникальным именем: {remote_path}")
@@ -4571,8 +4507,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 else:
                     logger.error(f"Ошибка загрузки: {upload_error}")
                     return None, None
-            
-            # Создаем публичную ссылку
+
             try:
                 public_url = self.yandex_disk.get_download_link(remote_path)
                 logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
@@ -4580,8 +4515,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 return public_url, remote_path
             except Exception as link_error:
                 logger.error(f"Ошибка создания публичной ссылки: {link_error}")
-                return remote_path, remote_path  # Возвращаем путь даже без ссылки
-            
+                return remote_path, remote_path
+
         except Exception as e:
             logger.error(f"Ошибка загрузки на Yandex Disk: {e}")
             return None, None
