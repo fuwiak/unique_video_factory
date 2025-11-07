@@ -268,8 +268,9 @@ else:
 def sanitize_markdown(value: Optional[str]) -> str:
     if not value:
         return ""
-    # Используем escape_markdown из python-telegram-bot (Markdown v1)
-    return escape_markdown(value, version=1)
+    safe = escape_markdown(value, version=1)
+    # Удаляем подчеркивания в отображении, чтобы избежать проблем с Markdown
+    return safe.replace("_", "-")
 
 
 # Состояния пользователей
@@ -490,7 +491,7 @@ class TelegramVideoBot:
             
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
-            content_folder = f"{blogger_folder}/{folder_name}"
+            content_folder = blogger_folder if not folder_name else f"{blogger_folder}/{folder_name}"
             
             # Создаем папку блогера, если не существует
             if not self.yandex_disk.exists(blogger_folder):
@@ -498,7 +499,7 @@ class TelegramVideoBot:
                 logger.info(f"Создана папка блогера: {blogger_folder}")
             
             # Создаем папку контента, если не существует
-            if not self.yandex_disk.exists(content_folder):
+            if folder_name and not self.yandex_disk.exists(content_folder):
                 self.yandex_disk.mkdir(content_folder)
                 logger.info(f"Создана папка контента: {content_folder}")
             
@@ -654,8 +655,8 @@ class TelegramVideoBot:
                     status_text += f"**Фильтр:** {status['filter']}\n"
                 if 'blogger_name' in status:
                     status_text += f"**Блогер:** {status['blogger_name']}\n"
-                if 'folder_name' in status:
-                    status_text += f"**Папка:** {status['folder_name']}\n"
+                if status.get('folder_name'):
+                    status_text += f"**Папка:** {sanitize_markdown(status['folder_name'])}\n"
                 if 'video_id' in status:
                     status_text += f"**ID ролика:** {status['video_id']}\n"
                 if 'video_date' in status and status['video_date']:
@@ -1150,8 +1151,7 @@ class TelegramVideoBot:
             match = pattern.match(text)
             if not match:
                 await update.message.reply_text(
-                    "❌ Неверный формат. Используйте `05.11.2025 (id_12345)`",
-                    parse_mode='Markdown'
+                    "❌ Неверный формат. Используйте 05.11.2025 (id_12345)"
                 )
                 return
 
@@ -1162,8 +1162,7 @@ class TelegramVideoBot:
                 datetime.strptime(date_str, "%d.%m.%Y")
             except ValueError:
                 await update.message.reply_text(
-                    "❌ Неверная дата. Используйте формат `дд.мм.гггг`, например `05.11.2025 (id_12345)`",
-                    parse_mode='Markdown'
+                    "❌ Неверная дата. Используйте формат дд.мм.гггг, например 05.11.2025 (id_12345)"
                 )
                 return
 
@@ -1172,52 +1171,40 @@ class TelegramVideoBot:
             user_states[user_id]['video_date'] = date_str
 
             await update.message.reply_text(
-                f"✅ Дата публикации и ID: **{sanitize_markdown(date_str)} ({sanitize_markdown(video_id)})**\n\n"
-                "👤 **Введите имя блогера:**\n"
-                "(например: Нина, Рэйчел, или новое имя)",
-                parse_mode='Markdown'
+                f"✅ Дата публикации и ID: {date_str} ({video_id.replace('_', '-')})\n\n"
+                "👤 Введите имя блогера:\n"
+                "(например: Нина, Рэйчел, или новое имя)"
             )
             return
         
         # Если еще не ввели имя блогера
         if user_states[user_id]['blogger_name'] is None:
             user_states[user_id]['blogger_name'] = text
+            user_states[user_id]['folder_name'] = ""
+
             await update.message.reply_text(
-                f"✅ Имя блогера: **{sanitize_markdown(text)}**\n\n"
-                "📁 **Введите название папки:**\n"
-                "(например: clips, videos, content)",
-                parse_mode='Markdown'
+                f"✅ Имя блогера: {text}\n"
+                "💾 Создаю папку на Yandex Disk..."
             )
-            return
-        
-        # Если еще не ввели название папки
-        if user_states[user_id]['folder_name'] is None:
-            user_states[user_id]['folder_name'] = text
-            
-            # Создаем структуру папок на Yandex Disk
-            await self.create_yandex_folders(user_states[user_id]['blogger_name'], text)
+
+            await self.create_yandex_folders(user_states[user_id]['blogger_name'], "")
             
             # Проверяем режим сохранения
             if status == 'saving_to_yandex':
-                # Быстрый режим - сохраняем на Yandex Disk
                 await self.save_quick_result_to_yandex(update, user_id)
             else:
-                # Расширенный режим: всегда создаем только 1 видео
                 user_states[user_id]['video_count'] = 1
                 user_states[user_id]['status'] = 'waiting_group_selection'
                 
-                # Сообщение с подтверждением и выбором группы фильтров
                 confirm_text = (
-                    f"✅ Настройки сохранены:\n"
-                    f"📅 Дата публикации: **{sanitize_markdown(user_states[user_id].get('video_date', 'не указана'))}**\n"
-                    f"🆔 ID ролика: **{sanitize_markdown(user_states[user_id]['video_id'])}**\n"
-                    f"👤 Блогер: **{sanitize_markdown(user_states[user_id]['blogger_name'])}**\n"
-                    f"📁 Папка: **{sanitize_markdown(text)}**\n\n"
-                    f"📂 Создана структура папок на Yandex Disk\n\n"
-                    f"🎬 **Выберите группу фильтров:**"
+                    "✅ Настройки сохранены:\n"
+                    f"📅 Дата публикации: {user_states[user_id].get('video_date', 'не указана')}\n"
+                    f"🆔 ID ролика: {user_states[user_id]['video_id'].replace('_', '-')}\n"
+                    f"👤 Блогер: {user_states[user_id]['blogger_name']}\n"
+                    "📂 Файлы будут сохранены прямо в папку блогера\n\n"
+                    "🎬 Выберите группу фильтров:"
                 )
-                
-                # Клавиатура для выбора группы фильтров
+
                 keyboard = [
                     [InlineKeyboardButton("📸 Винтажный", callback_data="group_vintage")],
                     [InlineKeyboardButton("🎭 Драматический", callback_data="group_dramatic")],
@@ -1227,7 +1214,7 @@ class TelegramVideoBot:
                 ]
                 markup = InlineKeyboardMarkup(keyboard)
                 
-                await update.message.reply_text(confirm_text, parse_mode='Markdown', reply_markup=markup)
+                await update.message.reply_text(confirm_text, reply_markup=markup)
                 return
 
     async def handle_blogger_creation(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1780,17 +1767,21 @@ class TelegramVideoBot:
         try:
             if not self.yandex_disk:
                 return False, "⚠️ Yandex Disk не настроен. Проверьте настройки бота."
-
+            
             blogger_name = video_data.get('blogger_name', 'unknown')
-            folder_name = video_data.get('folder_name', 'default')
-
+            folder_name = video_data.get('folder_name')
+            
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
-            content_folder = f"{blogger_folder}/{folder_name}"
+            content_folder = blogger_folder if not folder_name else f"{blogger_folder}/{folder_name}"
             approved_folder = f"{content_folder}/approved"
-
+            
             try:
-                for folder in [base_folder, blogger_folder, content_folder, approved_folder]:
+                folders_to_create = [base_folder, blogger_folder]
+                if folder_name:
+                    folders_to_create.append(content_folder)
+                folders_to_create.append(approved_folder)
+                for folder in folders_to_create:
                     if not self.yandex_disk.exists(folder):
                         self.yandex_disk.mkdir(folder)
                         logger.info(f"Создана папка: {folder}")
@@ -1798,7 +1789,7 @@ class TelegramVideoBot:
                 error_msg = f"Не удалось создать структуру папок: {str(e)}"
                 logger.error(error_msg)
                 return False, error_msg
-
+            
             video_id = video_data.get('video_id', 'id_unknown')
             video_date = video_data.get('video_date') or datetime.now().strftime('%d.%m.%Y')
             filename_base = f"{video_date} ({video_id})"
@@ -1806,10 +1797,10 @@ class TelegramVideoBot:
 
             source_remote_path = video_data.get('yandex_remote_path')
             logger.info(f"Yandex путь из данных: {source_remote_path}")
-
+            
             if not source_remote_path:
                 try:
-                    content_folder = f"{base_folder}/{blogger_name}/{folder_name}"
+                    content_folder = f"{base_folder}/{blogger_name}/{folder_name}" if folder_name else f"{base_folder}/{blogger_name}"
                     if self.yandex_disk.exists(content_folder):
                         for item in self.yandex_disk.listdir(content_folder):
                             if item['type'] == 'file' and item['name'].endswith('.mp4'):
@@ -1862,18 +1853,19 @@ class TelegramVideoBot:
                     error_msg = self.translate_yandex_error(upload_error)
                     logger.error(f"Ошибка загрузки на Yandex Disk: {upload_error}")
                     return False, error_msg
-
+            
+            folder_value = video_data.get('folder_name') or 'Папка блогера'
             metadata_content = f"""
 ID: {approval_id}
 Пользователь: {video_data.get('user_name', 'Неизвестно')}
 Фильтр: {video_data.get('filter', 'Неизвестно')}
 Дата создания: {video_data.get('timestamp', 'Неизвестно')}
 Блогер: {video_data.get('blogger_name', 'Неизвестно')}
-Папка: {video_data.get('folder_name', 'Неизвестно')}
+Папка: {folder_value}
 ID ролика: {video_data.get('video_id', 'Неизвестно')}
 Дата публикации: {video_date}
-""".strip()
-
+            """.strip()
+            
             if 'metadata' in video_data:
                 metadata_content += f"""
 \nДата публикации (менеджер): {video_data['metadata']['publish_date']}
@@ -1881,14 +1873,14 @@ ID сценария: {video_data['metadata']['scenario_id']}
 Описание: {video_data['metadata']['description']}
 Отправлено в чатбот: {video_data['metadata']['sent_at']}
 """.rstrip()
-
+            
             metadata_path = f"{approved_folder}/{filename_base}.txt"
             with open("temp_metadata.txt", "w", encoding="utf-8") as f:
                 f.write(metadata_content)
-
+            
             self.yandex_disk.upload("temp_metadata.txt", metadata_path)
             os.remove("temp_metadata.txt")
-
+            
             source_path = video_data.get('video_path')
             try:
                 if source_path and os.path.exists(source_path):
@@ -1902,12 +1894,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
             video_data['approved_by'] = video_data.get('approved_by', 'manager')
             video_data['approved_path'] = approved_path
             video_data['metadata_path'] = metadata_path
-
+            
             logger.info(f"Видео {approval_id} перемещено в approved папку")
             logger.info(f"Финальный путь: {approved_path}")
 
             return True, ""
-
+            
         except Exception as e:
             logger.error(f"Неожиданная ошибка при перемещении в approved папку: {str(e)}")
             import traceback
@@ -2338,11 +2330,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
         user_states[user_id]['folder_name'] = None
         
         await query.edit_message_text(
-            "💾 **Сохранение на Yandex Disk**\n\n"
+            "💾 Сохранение на Yandex Disk\n\n"
             "Для сохранения нужны метаданные.\n\n"
-            "🆔 **Введите дату и ID ролика:**\n"
-            "Формат: `05.11.2025 (id_12345)`",
-            parse_mode='Markdown'
+            "🆔 Введите дату и ID ролика:\n"
+            "Формат: 05.11.2025 (id_12345)"
         )
     
     async def handle_quick_done(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2402,16 +2393,19 @@ ID сценария: {video_data['metadata']['scenario_id']}
             blogger_name = user_states[user_id]['blogger_name']
             folder_name = user_states[user_id]['folder_name']
             filter_name = quick_result['filter_name']
-
+            
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
-            content_folder = f"{blogger_folder}/{folder_name}"
-
+            content_folder = blogger_folder if not folder_name else f"{blogger_folder}/{folder_name}"
+            
             # Загружаем на Yandex Disk
             if self.yandex_disk:
                 # Создаем папки если не существуют
                 try:
-                    for folder in [base_folder, blogger_folder, content_folder]:
+                    folders_to_create = [base_folder, blogger_folder]
+                    if folder_name:
+                        folders_to_create.append(content_folder)
+                    for folder in folders_to_create:
                         if not self.yandex_disk.exists(folder):
                             self.yandex_disk.mkdir(folder)
                             logger.info(f"Создана папка: {folder}")
@@ -2459,22 +2453,28 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 difference_info = ""
                 if 'difference_pct' in quick_result:
                     diff_pct = quick_result['difference_pct']
-                    difference_info = f"📊 **Отличие от оригинала:** {diff_pct:.1f}%\n\n"
+                    difference_info = f"📊 Отличие от оригинала: {diff_pct:.1f}%"
                 
                 # Создаем клавиатуру с кнопкой "Запустить заново"
                 keyboard = [[InlineKeyboardButton("🔄 Запустить заново", callback_data="restart")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
+                message_lines = [
+                    "✅ Сохранено на Yandex Disk!\n",
+                    f"📁 Путь: {remote_path}",
+                    f"🎨 Фильтр: {filter_name}",
+                    f"🆔 ID: {video_id}",
+                    f"👤 Блогер: {blogger_name}"
+                ]
+                if folder_name:
+                    message_lines.append(f"📂 Папка: {folder_name}")
+                if public_url:
+                    message_lines.append(f"🔗 Ссылка: {public_url}")
+                if difference_info:
+                    message_lines.append(difference_info.strip())
+                
                 await update.message.reply_text(
-                    f"✅ **Сохранено на Yandex Disk!**\n\n"
-                    f"📁 Путь: `{remote_path}`\n"
-                    f"🎨 Фильтр: {filter_name}\n"
-                    f"🆔 ID: {video_id}\n"
-                    f"👤 Блогер: {blogger_name}\n"
-                    f"📂 Папка: {folder_name}\n"
-                    + (f"🔗 Ссылка: {public_url}\n" if public_url else "")
-                    + difference_info,
-                    parse_mode='Markdown',
+                    "\n".join(message_lines),
                     reply_markup=reply_markup
                 )
             else:
@@ -2992,16 +2992,19 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Уведомляем о создании папки
             blogger_name = user_states[user_id].get('blogger_name', 'Unknown')
-            folder_name = user_states[user_id].get('folder_name', 'default')
+            folder_name = user_states[user_id].get('folder_name')
             
-            await query.edit_message_text(
-                f"📁 **ПАПКА СОЗДАНА**\n\n"
-                f"👤 Блогер: **{blogger_name}**\n"
-                f"📂 Папка: **{folder_name}**\n"
-                f"📂 Путь: `{results_folder}`\n"
-                f"🎬 Обрабатываю {len(selected_filters)} видео...\n\n"
+            info_lines = [
+                "📁 ПАПКА СОЗДАНА",
+                f"👤 Блогер: {blogger_name}",
+                f"📂 Путь: {results_folder}",
+                f"🎬 Обрабатываю {len(selected_filters)} видео...",
                 "⏳ Начинаю параллельную обработку..."
-            )
+            ]
+            if folder_name:
+                info_lines.insert(2, f"📂 Папка: {folder_name}")
+
+            await query.edit_message_text("\n".join(info_lines))
             
             # Создаем задачи для параллельной обработки
             tasks = []
@@ -3176,7 +3179,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'batch_index': i + 1,
                     'batch_total': len(selected_filters),
                     'blogger_name': user_states[user_id].get('blogger_name', 'unknown'),
-                    'folder_name': user_states[user_id].get('folder_name', 'default'),
+                    'folder_name': user_states[user_id].get('folder_name'),
                     'video_id': user_states[user_id].get('video_id', 'unknown'),
                     'video_date': user_states[user_id].get('video_date', datetime.now().strftime('%Y-%m-%d')),
                 }
@@ -3204,12 +3207,18 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            info_lines = [
+                f"✅ Создано {len(processed_videos)} видео и отправлено на аппрув!",
+                f"🆔 ID аппрува: {', '.join(approval_ids)}",
+                f"👤 Блогер: {user_states[user_id]['blogger_name']}"
+            ]
+            folder_name = user_states[user_id]['folder_name']
+            if folder_name:
+                info_lines.append(f"📁 Папка: {folder_name}")
+            info_lines.append("⚡ Быстрое решение:")
+            
             await query.message.reply_text(
-                f"✅ Создано {len(processed_videos)} видео и отправлено на аппрув!\n"
-                f"🆔 ID аппрува: {', '.join(approval_ids)}\n\n"
-                f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
-                f"📁 Папка: **{user_states[user_id]['folder_name']}**\n\n"
-                f"⚡ **Быстрое решение:**",
+                "\n".join(info_lines),
                 reply_markup=reply_markup
             )
             
@@ -3568,14 +3577,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await query.edit_message_text(
-                        f"❌ **Ошибка загрузки на Yandex Disk**\n\n"
-                        f"**Детали ошибки:**\n"
-                        f"`{error_msg}`\n\n"
-                        f"🔧 Проверьте:\n"
-                        f"• Подключение к Yandex Disk\n"
-                        f"• Наличие свободного места\n"
-                        f"• Права доступа к папкам",
-                        parse_mode='Markdown',
+                        "❌ Ошибка загрузки на Yandex Disk\n\n"
+                        f"Детали ошибки:\n{error_msg}\n\n"
+                        "🔧 Проверьте:\n"
+                        "• Подключение к Yandex Disk\n"
+                        "• Наличие свободного места\n"
+                        "• Права доступа к папкам",
                         reply_markup=reply_markup
                     )
                     return
@@ -3585,15 +3592,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 # Создаем кнопку "Начать заново?"
                 keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
+                folder_display = video_data.get('folder_name') or 'Папка блогера'
                 
                 await query.edit_message_text(
-                    f"✅ **ВИДЕО ОДОБРЕНО!**\n\n"
+                    "✅ ВИДЕО ОДОБРЕНО!\n\n"
                     f"🆔 ID: {approval_id}\n"
                     f"👤 Блогер: {video_data['blogger_name']}\n"
-                    f"📁 Папка: {video_data['folder_name']}\n"
-                    f"📂 Перемещено в: approved/\n\n"
-                    f"🎉 Видео готово к публикации!",
-                    parse_mode='Markdown',
+                    f"📁 Папка: {folder_display}\n"
+                    "📂 Перемещено в: approved/\n\n"
+                    "🎉 Видео готово к публикации!",
                     reply_markup=reply_markup
                 )
                 
@@ -3603,12 +3610,12 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 
                 await context.bot.send_message(
                     chat_id=video_data['user_id'],
-                    text=f"🎉 **Ваше видео одобрено!**\n\n"
+                    text=
+                        "🎉 Ваше видео одобрено!\n\n"
                          f"🆔 ID: {approval_id}\n"
                          f"👤 Блогер: {video_data['blogger_name']}\n"
-                         f"📁 Папка: {video_data['folder_name']}\n"
-                         f"✅ Статус: Одобрено",
-                    parse_mode='Markdown',
+                        f"📁 Папка: {folder_display}\n"
+                        "✅ Статус: Одобрено",
                     reply_markup=user_reply_markup
                 )
                 
@@ -3620,14 +3627,14 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 keyboard = [[InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
+                folder_display = video_data.get('folder_name') or 'Папка блогера'
                 await query.edit_message_text(
-                    f"❌ **ВИДЕО ОТКЛОНЕНО**\n\n"
+                    "❌ ВИДЕО ОТКЛОНЕНО\n\n"
                     f"🆔 ID: {approval_id}\n"
                     f"👤 Блогер: {video_data['blogger_name']}\n"
-                    f"📁 Папка: {video_data['folder_name']}\n"
-                    f"📂 Перемещено в: not_approved/\n\n"
-                    f"💡 Видео требует доработки",
-                    parse_mode='Markdown',
+                    f"📁 Папка: {folder_display}\n"
+                    "📂 Перемещено в: not_approved/\n\n"
+                    "💡 Видео требует доработки",
                     reply_markup=reply_markup
                 )
                 
@@ -3637,13 +3644,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 
                 await context.bot.send_message(
                     chat_id=video_data['user_id'],
-                    text=f"❌ **Видео отклонено**\n\n"
+                    text=
+                        "❌ Видео отклонено\n\n"
                          f"🆔 ID: {approval_id}\n"
                          f"👤 Блогер: {video_data['blogger_name']}\n"
-                         f"📁 Папка: {video_data['folder_name']}\n"
-                         f"❌ Статус: Отклонено\n\n"
-                         f"💡 Попробуйте другой фильтр или настройки",
-                    parse_mode='Markdown',
+                        f"📁 Папка: {folder_display}\n"
+                        "❌ Статус: Отклонено\n\n"
+                        "💡 Попробуйте другой фильтр или настройки",
                     reply_markup=user_reply_markup
                 )
             
@@ -3935,7 +3942,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             video_id = user_states[user_id].get('video_id', 'id_unknown')
             video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
             unique_id = str(uuid.uuid4())[:8]
-
+            
             input_filename = f"input_{unique_id}.mp4"
             output_filename = f"{video_date} ({video_id}).mp4"
             
@@ -4469,21 +4476,24 @@ ID сценария: {video_data['metadata']['scenario_id']}
         """Загрузка файла на Yandex Disk"""
         try:
             logger.info(f"🚀 Начинаю загрузку файла на Yandex Disk: {file_path} (filter: {filter_id})")
-
+            
             blogger_name = user_states[user_id].get('blogger_name', f'user_{user_id}')
-            folder_name = user_states[user_id].get('folder_name') or 'default'
+            folder_name = user_states[user_id].get('folder_name')
             video_id = user_states[user_id].get('video_id') or 'id_unknown'
             video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
-
+            
             logger.info(f"👤 Блогер: {blogger_name}, 📁 Папка: {folder_name}, 🆔 ID: {video_id}, 📅 Дата: {video_date}")
-
+            
             base_folder = "Медиабанк/Команда 1"
             blogger_folder = f"{base_folder}/{blogger_name}"
-            content_folder = f"{blogger_folder}/{folder_name}"
+            content_folder = blogger_folder if not folder_name else f"{blogger_folder}/{folder_name}"
 
             # Создаем необходимые папки
             try:
-                for folder in [base_folder, blogger_folder, content_folder]:
+                folders_to_create = [base_folder, blogger_folder]
+                if folder_name:
+                    folders_to_create.append(content_folder)
+                for folder in folders_to_create:
                     if not self.yandex_disk.exists(folder):
                         self.yandex_disk.mkdir(folder)
                         logger.info(f"Создана папка: {folder}")
@@ -4493,10 +4503,10 @@ ID сценария: {video_data['metadata']['scenario_id']}
             if not os.path.exists(file_path):
                 logger.error(f"❌ Локальный файл не существует: {file_path}")
                 return None, None
-
+            
             filename = f"{video_date} ({video_id}).mp4"
             remote_path = f"{content_folder}/{filename}"
-
+            
             logger.info(f"⬆️ Загружаю файл на Yandex Disk: {remote_path}")
             try:
                 self.yandex_disk.upload(file_path, remote_path)
@@ -4516,7 +4526,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 else:
                     logger.error(f"Ошибка загрузки: {upload_error}")
                     return None, None
-
+            
             try:
                 public_url = self.yandex_disk.get_download_link(remote_path)
                 logger.info(f"✅ Файл загружен на Yandex Disk: {remote_path}")
@@ -4525,7 +4535,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             except Exception as link_error:
                 logger.error(f"Ошибка создания публичной ссылки: {link_error}")
                 return remote_path, remote_path
-
+            
         except Exception as e:
             logger.error(f"Ошибка загрузки на Yandex Disk: {e}")
             return None, None
