@@ -23,6 +23,10 @@ API_KEYS = {
     
     # Likee API (jeśli dostępne)
     'likee': None,  # 'YOUR_LIKEE_ACCESS_TOKEN'
+
+    # Apify (Instagram Reel Scraper)
+    # Pobierz z: https://console.apify.com/account?tab=integrations
+    'apify': None,  # 'YOUR_APIFY_API_TOKEN'
 }
 
 # Instrukcje uzyskania API keys:
@@ -78,7 +82,8 @@ def get_api_keys():
         'instagram': os.getenv('INSTAGRAM_ACCESS_TOKEN'),
         'tiktok': os.getenv('TIKTOK_ACCESS_TOKEN'),
         'vk': os.getenv('VK_TOKEN'),  # Zmieniono z VK_ACCESS_TOKEN na VK_TOKEN
-        'likee': os.getenv('LIKEE_ACCESS_TOKEN')
+        'likee': os.getenv('LIKEE_ACCESS_TOKEN'),
+        'apify': os.getenv('APIFY_TOKEN')
     }
 
 def print_instructions():

@@ -175,6 +175,28 @@ class GoogleSheetsIntegration:
         rows = []
         current_date = datetime.now().strftime('%Y-%m-%d')
         
+        def build_row(video_url: str, post_date: str, current_views: Any,
+                      week_views: Any, month_views: Any) -> List[str]:
+            """Helper do budowania pojedynczego wiersza."""
+            safe_url = video_url or ''
+            safe_date = (post_date or current_date)[:10]
+
+            def _to_str(value: Any) -> str:
+                if value is None:
+                    return '0'
+                try:
+                    return str(int(value))
+                except (ValueError, TypeError):
+                    return str(value)
+
+            return [
+                safe_url,
+                safe_date,
+                _to_str(current_views),
+                _to_str(week_views if week_views is not None else current_views),
+                _to_str(month_views if month_views is not None else current_views),
+            ]
+
         for platform, platform_data in data.items():
             logger.info(f"📊 Przetwarzam platformę: {platform}")
             logger.info(f"📋 Dane platformy: {platform_data}")
@@ -200,69 +222,77 @@ class GoogleSheetsIntegration:
             
             if has_clips_list:
                 logger.info(f"📹 Przetwarzam VK clips: {len(platform_data['clips'])} clips")
-                # Przetwarzamy VK clips
+                reference_url = platform_data.get('url', '')
                 for i, clip in enumerate(platform_data['clips']):
                     logger.info(f"📹 Clip {i+1}: {clip}")
-                    row = [
-                        '',  # Референс (zawsze pusty)
-                        platform_data.get('url', ''),  # Видео (URL)
-                        clip.get('date', current_date)[:10],  # Дата поста
-                        str(clip.get('views', 0)),     # Кол-во просмотров 1 день
-                        str(clip.get('views', 0)),     # Кол-во просмотров 1 нед (brak danych historycznych)
-                        str(clip.get('views', 0))      # Кол-во просмотров 1 мес (brak danych historycznych)
-                    ]
+                    row = build_row(
+                        reference_url or clip.get('url', ''),
+                        clip.get('date', current_date),
+                        clip.get('views'),
+                        clip.get('views_week') or clip.get('views_weekly') or clip.get('views'),
+                        clip.get('views_month') or clip.get('views_monthly') or clip.get('views'),
+                    )
                     logger.info(f"📝 Utworzono wiersz dla clip {i+1}: {row}")
                     rows.append(row)
-            
+
             elif has_videos_list:
-                # Przetwarzamy YouTube videos
+                logger.info(f"📹 Przetwarzam videos: {len(platform_data['videos'])} szt.")
+                reference_url = platform_data.get('url', '')
                 for video in platform_data['videos']:
-                    row = [
-                        '',  # Референс (zawsze pusty)
-                        platform_data.get('url', ''),  # Видео (URL)
-                        video.get('date', current_date)[:10],  # Дата поста
-                        str(video.get('views', 0)),    # Кол-во просмотров 1 день
-                        str(video.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
-                        str(video.get('views', 0))    # Кол-во просмотров 1 мес (brak danych historycznych)
-                    ]
+                    row = build_row(
+                        video.get('url') or reference_url,
+                        video.get('date', current_date),
+                        video.get('views'),
+                        video.get('views_week') or video.get('views_weekly') or video.get('views'),
+                        video.get('views_month') or video.get('views_monthly') or video.get('views'),
+                    )
                     rows.append(row)
-            
+
             elif has_shorts_list:
-                # Przetwarzamy YouTube shorts
                 logger.info(f"📹 Przetwarzam YouTube shorts: {len(platform_data['shorts'])} shorts")
+                reference_url = platform_data.get('url', '')
                 for short in platform_data['shorts']:
-                    row = [
-                        '',  # Референс (zawsze pusty)
-                        short.get('url', platform_data.get('url', '')),  # Видео (URL)
-                        short.get('published_at', current_date)[:10],  # Дата поста
-                        str(short.get('views', 0)),    # Кол-во просмотров 1 день
-                        str(short.get('views', 0)),   # Кол-во просмотров 1 нед (brak danych historycznych)
-                        str(short.get('views', 0))    # Кол-во просмотров 1 мес (brak danych historycznych)
-                    ]
+                    row = build_row(
+                        short.get('url') or reference_url,
+                        short.get('published_at', current_date),
+                        short.get('views'),
+                        short.get('views_week') or short.get('views'),
+                        short.get('views_month') or short.get('views'),
+                    )
                     rows.append(row)
-            
+
             elif has_reels_list:
-                # Przetwarzamy Instagram reels
                 logger.info(f"📹 Przetwarzam Instagram reels: {len(platform_data['reels'])} reels")
+                reference_url = platform_data.get('url', '')
                 for reel in platform_data['reels']:
                     logger.info(f"📹 Reel: {reel}")
-                    # Dla Instagram reels używamy URL z reels lub video_path jeśli dostępny
-                    video_url = reel.get('url', platform_data.get('url', ''))
-                    row = [
-                        '',  # Референс (zawsze pusty)
-                        video_url,  # Видео (URL)
-                        current_date,  # Дата поста (nie mamy daty z reels, używamy dzisiejszej)
-                        '0',  # Кол-во просмотров 1 день (nie mamy danych o wyświetleniach)
-                        '0',  # Кол-во просмотров 1 нед
-                        '0'   # Кол-во просмотров 1 мес
-                    ]
+                    video_url = reel.get('url') or reference_url
+                    row = build_row(
+                        video_url,
+                        reel.get('date', current_date),
+                        reel.get('views', 0),
+                        reel.get('views_week') or reel.get('views', 0),
+                        reel.get('views_month') or reel.get('views', 0),
+                    )
                     logger.info(f"📝 Utworzono wiersz dla reel: {row}")
                     rows.append(row)
             
             else:
-                # Brak danych do przetworzenia
-                logger.warning(f"⚠️ Brak clips/videos/shorts/reels dla {platform}")
-                logger.info(f"🔍 Dostępne klucze: {list(platform_data.keys())}")
+                # Spróbujmy obsłużyć prostą strukturę z pojedynczym wideo
+                if isinstance(platform_data, dict) and 'views' in platform_data and platform_data.get('url'):
+                    row = build_row(
+                        platform_data.get('url', ''),
+                        platform_data.get('date', current_date),
+                        platform_data.get('views'),
+                        platform_data.get('views_week'),
+                        platform_data.get('views_month'),
+                    )
+                    rows.append(row)
+                    logger.info(f"📝 Utworzono wiersz z prostych danych dla {platform}: {row}")
+                else:
+                    # Brak danych do przetworzenia
+                    logger.warning(f"⚠️ Brak clips/videos/shorts/reels dla {platform}")
+                    logger.info(f"🔍 Dostępne klucze: {list(platform_data.keys())}")
         
         logger.info(f"📊 Łącznie utworzono {len(rows)} wierszy")
         return rows
