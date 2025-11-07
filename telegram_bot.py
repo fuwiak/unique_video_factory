@@ -22,6 +22,7 @@ import aiohttp
 import schedule
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.helpers import escape_markdown
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     CallbackQueryHandler, filters, ContextTypes
@@ -262,6 +263,14 @@ else:
         logger.info("✅ Self-hosted Bot API configured - files up to 2GB supported")
     else:
         logger.warning("⚠️ Using standard Telegram API - 20MB limit")
+
+# Помощник для экранирования Markdown
+def sanitize_markdown(value: Optional[str]) -> str:
+    if not value:
+        return ""
+    # Используем escape_markdown из python-telegram-bot (Markdown v1)
+    return escape_markdown(value, version=1)
+
 
 # Состояния пользователей
 user_states = {}
@@ -1163,7 +1172,7 @@ class TelegramVideoBot:
             user_states[user_id]['video_date'] = date_str
 
             await update.message.reply_text(
-                f"✅ Дата публикации и ID: **{date_str} ({video_id})**\n\n"
+                f"✅ Дата публикации и ID: **{sanitize_markdown(date_str)} ({sanitize_markdown(video_id)})**\n\n"
                 "👤 **Введите имя блогера:**\n"
                 "(например: Нина, Рэйчел, или новое имя)",
                 parse_mode='Markdown'
@@ -1174,7 +1183,7 @@ class TelegramVideoBot:
         if user_states[user_id]['blogger_name'] is None:
             user_states[user_id]['blogger_name'] = text
             await update.message.reply_text(
-                f"✅ Имя блогера: **{text}**\n\n"
+                f"✅ Имя блогера: **{sanitize_markdown(text)}**\n\n"
                 "📁 **Введите название папки:**\n"
                 "(например: clips, videos, content)",
                 parse_mode='Markdown'
@@ -1200,10 +1209,10 @@ class TelegramVideoBot:
                 # Сообщение с подтверждением и выбором группы фильтров
                 confirm_text = (
                     f"✅ Настройки сохранены:\n"
-                    f"📅 Дата публикации: **{user_states[user_id].get('video_date', 'не указана')}**\n"
-                    f"🆔 ID ролика: **{user_states[user_id]['video_id']}**\n"
-                    f"👤 Блогер: **{user_states[user_id]['blogger_name']}**\n"
-                    f"📁 Папка: **{text}**\n\n"
+                    f"📅 Дата публикации: **{sanitize_markdown(user_states[user_id].get('video_date', 'не указана'))}**\n"
+                    f"🆔 ID ролика: **{sanitize_markdown(user_states[user_id]['video_id'])}**\n"
+                    f"👤 Блогер: **{sanitize_markdown(user_states[user_id]['blogger_name'])}**\n"
+                    f"📁 Папка: **{sanitize_markdown(text)}**\n\n"
                     f"📂 Создана структура папок на Yandex Disk\n\n"
                     f"🎬 **Выберите группу фильтров:**"
                 )
