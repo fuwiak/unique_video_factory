@@ -1124,14 +1124,14 @@ class AdvancedSocialStatsChecker:
         
         # Format: https://vk.com/clips/id1069245351?feedType=ownerFeed&owner=1069245351&z=clip1069245351_456239129
         # Szukamy clip{owner_id}_{video_id}
-        clip_match = re.search(r'clip(\d+)_(\d+)', url)
+        clip_match = re.search(r'clip(-?\d+)_(\d+)', url)
         if clip_match:
             video_id = clip_match.group(2)  # video_id
             logger.info(f"✅ Znaleziono video ID przez clip_match: {video_id}")
             return video_id
         
         # Alternatywnie szukamy w parametrze z
-        z_match = re.search(r'z=clip\d+_(\d+)', url)
+        z_match = re.search(r'z=clip-?\d+_(\d+)', url)
         if z_match:
             video_id = z_match.group(1)
             logger.info(f"✅ Znaleziono video ID przez z_match: {video_id}")
@@ -1153,7 +1153,7 @@ class AdvancedSocialStatsChecker:
             return owner_id
         
         # Alternatywnie z clip{owner_id}_{video_id}
-        clip_match = re.search(r'clip(\d+)_\d+', url)
+        clip_match = re.search(r'clip(-?\d+)_\d+', url)
         if clip_match:
             owner_id = clip_match.group(1)
             logger.info(f"✅ Znaleziono owner ID przez clip_match: {owner_id}")
@@ -1161,6 +1161,61 @@ class AdvancedSocialStatsChecker:
         
         logger.warning(f"❌ Nie można wyciągnąć owner ID z URL: {url}")
         return None
+
+    def convert_vk_wall_to_clip_url(self, wall_url: str) -> Optional[str]:
+        """Konwertuje URL posta wall na URL clipu z parametrem ?z=clip..."""
+        try:
+            match = re.search(r'vk\.com/wall(-?\d+)_(\d+)', wall_url)
+            if not match:
+                logger.warning(f"⚠️ URL nie wygląda na wall post: {wall_url}")
+                return None
+
+            owner_id, post_id = match.group(1), match.group(2)
+            vk_token = self.api_keys.get('vk') if hasattr(self, 'api_keys') else None
+
+            if not vk_token:
+                logger.warning("⚠️ Brak VK_TOKEN - nie można pobrać danych posta przez API")
+                return None
+
+            params = {
+                'posts': f"{owner_id}_{post_id}",
+                'extended': 1,
+                'access_token': vk_token,
+                'v': '5.131'
+            }
+
+            response = self.session.get('https://api.vk.com/method/wall.getById', params=params, timeout=10)
+            data = response.json()
+
+            if 'error' in data:
+                logger.error(f"❌ Błąd VK API wall.getById: {data['error']}")
+                return None
+
+            posts = data.get('response')
+            if isinstance(posts, dict):
+                posts = posts.get('items', [])
+
+            if not posts:
+                logger.warning(f"⚠️ Brak postów w odpowiedzi VK API dla {wall_url}")
+                return None
+
+            for post in posts:
+                for attachment in post.get('attachments', []):
+                    if attachment.get('type') == 'video':
+                        video = attachment.get('video', {})
+                        video_id = video.get('id') or video.get('video_id')
+                        video_owner_id = video.get('owner_id') or owner_id
+                        if video_id:
+                            clip_url = f"https://vk.com/wall{owner_id}_{post_id}?z=clip{video_owner_id}_{video_id}"
+                            logger.info(f"✅ Skonwertowano wall URL na clip URL: {clip_url}")
+                            return clip_url
+
+            logger.warning(f"⚠️ Nie znaleziono video w poście {wall_url}")
+            return None
+
+        except Exception as exc:
+            logger.error(f"❌ Błąd konwersji wall URL na clip: {exc}")
+            return None
     
     def check_likee_stats(self, profile_url: str) -> Dict[str, Any]:
         """Sprawdzanie statystyk Likee"""

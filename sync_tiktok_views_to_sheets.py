@@ -44,7 +44,7 @@ def build_actor_input(video_urls: Iterable[str]) -> Dict[str, Any]:
     if not urls:
         raise ValueError("At least one TikTok video URL must be provided.")
 
-    return {
+    actor_input: Dict[str, Any] = {
         "resultsPerPage": 1,
         "profiles": [],
         "profileScrapeSections": ["videos"],
@@ -60,6 +60,35 @@ def build_actor_input(video_urls: Iterable[str]) -> Dict[str, Any]:
         "shouldDownloadAvatars": False,
         "shouldDownloadMusicCovers": False,
     }
+
+    sessionid = os.getenv("APIFY_TT_SESSIONID")
+    if sessionid:
+        actor_input["sessionid"] = sessionid
+
+    return actor_input
+
+
+def _collect_urls_from_blogger(blogger_name: str) -> List[str]:
+    integration = GoogleSheetsIntegration()
+    sheet = integration.get_or_create_blogger_sheet(blogger_name)
+    if not sheet:
+        return []
+
+    urls: List[str] = []
+    for row in sheet.get_all_values()[1:]:  # skip header
+        if len(row) > 1:
+            url = row[1].strip()
+            if url and "tiktok.com" in url:
+                urls.append(url)
+
+    # deduplicate preserving order
+    seen = set()
+    unique_urls: List[str] = []
+    for url in urls:
+        if url not in seen:
+            seen.add(url)
+            unique_urls.append(url)
+    return unique_urls
 
 
 def extract_counts(item: Dict[str, Any]) -> Dict[str, Any]:
@@ -117,13 +146,26 @@ def build_sheet_payload(stats: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
     """Convert TikTok stats into the structure expected by ``GoogleSheetsIntegration``."""
 
     videos: List[Dict[str, Any]] = []
+    seen_urls = set()
     for entry in stats:
         views = entry.get("views")
         url = entry.get("url")
         if not url:
             continue
+
+        if url in seen_urls:
+            continue
+        seen_urls.add(url)
+
         if views is None:
-            continue  # Skip entries without view data
+            videos.append(
+                {
+                    "url": url,
+                    "views": "⚠️ Контент доступен только авторизованным пользователям",
+                    "date": entry.get("create_time"),
+                }
+            )
+            continue
 
         videos.append(
             {
@@ -149,7 +191,7 @@ def save_stats_to_sheets(stats: Iterable[Dict[str, Any]], blogger_name: str | No
 
     payload = build_sheet_payload(stats)
     if not payload:
-        raise RuntimeError("No valid TikTok stats with view counts to write to Google Sheets.")
+        raise RuntimeError("No TikTok data available to write to Google Sheets.")
 
     integration = GoogleSheetsIntegration()
 
@@ -160,7 +202,7 @@ def save_stats_to_sheets(stats: Iterable[Dict[str, Any]], blogger_name: str | No
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Fetch TikTok video stats via Apify and write them to Google Sheets.")
-    parser.add_argument("urls", nargs="+", help="TikTok video URLs to process")
+    parser.add_argument("urls", nargs="*", help="TikTok video URLs to process. If omitted, use --blogger to pull from sheet.")
     parser.add_argument(
         "--blogger",
         dest="blogger_name",
@@ -172,7 +214,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     client = load_apify_client()
-    stats = fetch_tiktok_video_stats(client, args.urls)
+    urls = args.urls
+
+    if not urls and args.blogger_name:
+        urls = _collect_urls_from_blogger(args.blogger_name)
+
+    if not urls:
+        raise RuntimeError("No TikTok URLs provided and blogger sheet had none.")
+
+    stats = fetch_tiktok_video_stats(client, urls)
 
     success = save_stats_to_sheets(stats, blogger_name=args.blogger_name)
     if success:

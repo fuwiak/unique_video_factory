@@ -2,16 +2,23 @@
 """
 Daily views report for Google Sheets - adds daily views data with date
 """
-import os
+import argparse
 import json
 import logging
+import os
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
+
+import gspread
 import requests
 from dotenv import load_dotenv
-import gspread
 from google.oauth2.service_account import Credentials
+
 from advanced_social_stats import AdvancedSocialStatsChecker
+from sync_tiktok_views_to_sheets import (  # type: ignore[import]
+    fetch_tiktok_video_stats,
+    load_apify_client,
+)
 
 # Ładujemy zmienne środowiskowe
 load_dotenv()
@@ -32,6 +39,7 @@ class DailyViewsReporter:
         self.sheet = None
         self.gc = None
         self.youtube_api_key = os.getenv('YOUTUBE_API_KEY')
+        self.apify_client = None
         
         # Inicjalizacja Google Sheets
         self.init_google_sheets()
@@ -126,6 +134,8 @@ class DailyViewsReporter:
             return 'instagram'
         elif 'vk.com' in url_lower:
             return 'vk'
+        elif 'tiktok.com' in url_lower:
+            return 'tiktok'
         else:
             return 'unknown'
     
@@ -229,6 +239,52 @@ class DailyViewsReporter:
                     'published_at': clip.get('date', datetime.now().strftime('%Y-%m-%d'))
                 }
             
+            elif platform == 'tiktok':
+                logger.info(f"📊 Pobieram dane TikTok: {url}")
+                if not self.apify_client:
+                    try:
+                        self.apify_client = load_apify_client()
+                    except Exception as exc:
+                        logger.warning(
+                            "⚠️ Nie można zainicjalizować Apify clienta dla TikTok: %s",
+                            exc,
+                        )
+                        return None
+
+                try:
+                    stats = fetch_tiktok_video_stats(self.apify_client, [url])
+                except Exception as exc:
+                    logger.warning(f"⚠️ Błąd pobierania danych TikTok: {exc}")
+                    return None
+
+                if not stats:
+                    logger.warning("⚠️ Brak danych TikTok dla URL: %s", url)
+                    return None
+
+                entry = stats[0]
+                views = entry.get('views')
+                if views is None:
+                    logger.warning("⚠️ Brak liczby wyświetleń TikTok dla URL: %s", url)
+                    return {
+                        'video_id': entry.get('id') or entry.get('url') or url,
+                        'views': '⚠️ Контент доступен только авторизованным пользователям',
+                        'title': entry.get('caption', '') or 'TikTok Video',
+                        'published_at': (
+                            entry.get('create_time')
+                            or datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                        ),
+                    }
+
+                return {
+                    'video_id': entry.get('id') or entry.get('url') or url,
+                    'views': int(views),
+                    'title': entry.get('caption', '') or 'TikTok Video',
+                    'published_at': (
+                        entry.get('create_time')
+                        or datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+                    ),
+                }
+
             else:
                 logger.warning(f"⚠️ Nieobsługiwana platforma: {platform}")
                 return None
@@ -265,6 +321,11 @@ class DailyViewsReporter:
                 logger.error("❌ Arkusz nie jest zainicjalizowany")
                 return False
             
+            original_url = video_url
+            video_url = self.normalize_video_url(video_url)
+            if video_url != original_url:
+                logger.info(f"🔄 Zamieniono URL {original_url} -> {video_url}")
+            
             # Get current views (metoda get_video_views przyjmuje teraz URL bezpośrednio)
             video_data = self.get_video_views(video_url)
             if not video_data:
@@ -300,102 +361,151 @@ class DailyViewsReporter:
             logger.error(traceback.format_exc())
             return False
     
+    def process_sheet(self, sheet_name: str, spreadsheet=None) -> int:
+        """Process all unique video URLs in a specific sheet."""
+        if not self.gc:
+            logger.error("❌ Google Sheets client nie jest zainicjalizowany")
+            return 0
+
+        try:
+            if spreadsheet is None:
+                spreadsheet = self.gc.open_by_key(self.sheet_id)
+
+            sheet = spreadsheet.worksheet(sheet_name)
+        except gspread.WorksheetNotFound:
+            logger.error(f"❌ Nie znaleziono arkusza: {sheet_name}")
+            return 0
+        except Exception as exc:
+            logger.error(f"❌ Błąd otwierania arkusza {sheet_name}: {exc}")
+            return 0
+
+        logger.info(f"📊 Przetwarzam arkusz: {sheet_name}")
+
+        self.ensure_date_header(sheet)
+
+        all_rows = sheet.get_all_values()
+        if len(all_rows) < 2:
+            logger.info(f"📋 Arkusz {sheet_name} jest pusty")
+            return 0
+
+        headers = all_rows[0]
+        video_col_index = None
+        date_col_index = None
+
+        for i, header in enumerate(headers):
+            if 'Видео' in header or 'Video' in header:
+                video_col_index = i
+            if 'Дата поста' in header or 'Дата' in header:
+                date_col_index = i
+
+        if video_col_index is None:
+            logger.warning(f"⚠️ Nie znaleziono kolumny 'Видео' w arkuszu {sheet_name}")
+            return 0
+
+        processed_urls = set()
+        for row in all_rows[1:]:  # Skip header row
+            if len(row) > video_col_index and row[video_col_index]:
+                url = row[video_col_index].strip()
+                if url.startswith('http') and url not in processed_urls:
+                    processed_urls.add(url)
+                    published_date = (
+                        row[date_col_index].strip()
+                        if date_col_index is not None and len(row) > date_col_index and row[date_col_index]
+                        else None
+                    )
+                    logger.info(
+                        f"📊 Przetwarzam wideo {len(processed_urls)} z {sheet_name}: {url}"
+                    )
+                    self.add_daily_row(sheet, url, published_date)
+
+        logger.info(f"✅ Arkusz {sheet_name}: przetworzono {len(processed_urls)} wideo")
+        return len(processed_urls)
+
     def process_all_videos(self):
         """Process all videos from all sheets dynamically"""
         try:
             if not self.gc:
                 logger.error("❌ Google Sheets client nie jest zainicjalizowany")
                 return False
-            
-            # Open spreadsheet
+
             spreadsheet = self.gc.open_by_key(self.sheet_id)
-            
-            # Get all worksheets dynamically (will include Нина, Лиза, Mutant and any new ones)
             all_sheets = spreadsheet.worksheets()
             sheet_names = [sheet.title for sheet in all_sheets]
-            
+
             logger.info(f"📋 Znaleziono {len(sheet_names)} arkuszy: {', '.join(sheet_names)}")
-            
+
             total_processed = 0
-            
             for sheet_name in sheet_names:
                 try:
-                    logger.info(f"📊 Przetwarzam arkusz: {sheet_name}")
-                    sheet = spreadsheet.worksheet(sheet_name)
-                    
-                    # Ensure date header exists
-                    self.ensure_date_header(sheet)
-                    
-                    # Get all rows
-                    all_rows = sheet.get_all_values()
-                    
-                    if len(all_rows) < 2:
-                        logger.info(f"📋 Arkusz {sheet_name} jest pusty")
-                        continue
-                    
-                    # Find column index for "Видео" (should be column B, index 1)
-                    headers = all_rows[0]
-                    video_col_index = None
-                    date_col_index = None
-                    
-                    for i, header in enumerate(headers):
-                        if 'Видео' in header or 'Video' in header:
-                            video_col_index = i
-                        if 'Дата поста' in header or 'Дата' in header:
-                            date_col_index = i
-                    
-                    if video_col_index is None:
-                        logger.warning(f"⚠️ Nie znaleziono kolumny 'Видео' w arkuszu {sheet_name}")
-                        continue
-                    
-                    # Process unique video URLs (column B - Видео)
-                    processed_urls = set()
-                    for i, row in enumerate(all_rows[1:], start=2):  # Skip header row
-                        if len(row) > video_col_index and row[video_col_index]:
-                            url = row[video_col_index].strip()
-                            # Only process valid URLs
-                            if url.startswith('http') and url not in processed_urls:
-                                processed_urls.add(url)
-                                published_date = row[date_col_index].strip() if date_col_index and len(row) > date_col_index else None
-                                logger.info(f"📊 Przetwarzam wideo {len(processed_urls)} z {sheet_name}: {url}")
-                                self.add_daily_row(sheet, url, published_date)
-                    
-                    logger.info(f"✅ Arkusz {sheet_name}: przetworzono {len(processed_urls)} wideo")
-                    total_processed += len(processed_urls)
-                    
+                    total_processed += self.process_sheet(sheet_name, spreadsheet=spreadsheet)
                 except Exception as e:
                     logger.error(f"❌ Błąd przetwarzania arkusza {sheet_name}: {e}")
                     import traceback
                     logger.error(traceback.format_exc())
                     continue
-            
+
             logger.info(f"✅ Łącznie przetworzono {total_processed} wideo ze wszystkich arkuszy")
             return True
-            
+
         except Exception as e:
             logger.error(f"❌ Błąd przetwarzania: {e}")
             import traceback
             logger.error(traceback.format_exc())
             return False
 
+    def normalize_video_url(self, url: str) -> str:
+        """Normalizuje URL przed pobraniem danych (np. konwersja VK wall -> clip)."""
+        try:
+            if 'vk.com/wall' in url and 'clip' not in url:
+                converted = self.social_stats_checker.convert_vk_wall_to_clip_url(url)
+                if converted:
+                    return converted
+        except Exception as exc:
+            logger.warning(f"⚠️ Nie udało się znormalizować URL {url}: {exc}")
+        return url
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Append daily view stats for videos stored in Google Sheets."
+    )
+    parser.add_argument(
+        "--sheet",
+        dest="sheets",
+        action="append",
+        help="Optional sheet title to process. Repeat for multiple sheets. Default: all sheets.",
+    )
+    return parser.parse_args()
+
 
 def main():
     """Main function"""
+    args = parse_args()
     logger.info("🚀 Uruchamianie daily views reporter")
-    
+
     reporter = DailyViewsReporter()
-    
+
     if not reporter.gc:
         logger.error("❌ Nie można połączyć z Google Sheets")
         return
-    
-    # Process all videos
-    success = reporter.process_all_videos()
-    
-    if success:
-        logger.info("✅ Raport codzienny zakończony pomyślnie")
+
+    if args.sheets:
+        spreadsheet = reporter.gc.open_by_key(reporter.sheet_id)
+        total_processed = 0
+        for sheet_name in args.sheets:
+            total_processed += reporter.process_sheet(sheet_name, spreadsheet=spreadsheet)
+        if total_processed:
+            logger.info(
+                f"✅ Zakończono przetwarzanie {len(args.sheets)} arkuszy. Łącznie {total_processed} wideo."
+            )
+        else:
+            logger.warning("⚠️ Nie przetworzono żadnych wideo - sprawdź nazwy arkuszy i dane")
     else:
-        logger.error("❌ Błąd podczas tworzenia raportu")
+        success = reporter.process_all_videos()
+        if success:
+            logger.info("✅ Raport codzienny zakończony pomyślnie")
+        else:
+            logger.error("❌ Błąd podczas tworzenia raportu")
 
 
 if __name__ == "__main__":
