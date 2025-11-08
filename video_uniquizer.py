@@ -89,8 +89,13 @@ class VideoUniquizer:
             trim_amount = random.uniform(*self.trim_seconds)
         
         # Обрезаем только если видео достаточно длинное
-        trim_start = min(trim_amount, clip.duration * 0.1)  # Не больше 10% от длины
-        trim_end = min(trim_amount, clip.duration * 0.1)
+        if trim_amount > 0:
+            max_trim = max(0, clip.duration / 2 - 0.1)
+            trim_use = min(trim_amount, max_trim) if max_trim > 0 else 0
+        else:
+            trim_use = 0
+        trim_start = trim_use
+        trim_end = trim_use
         
         print(f"✂️ Обрезаю {trim_start:.2f}s с начала и {trim_end:.2f}s с конца")
         
@@ -587,8 +592,14 @@ class VideoUniquizer:
         
         return frame
     
-    def uniquize_video(self, input_path: str, output_path: str, 
-                      effects: List[str] = None, params: dict = None) -> str:
+    def uniquize_video(
+        self,
+        input_path: str,
+        output_path: str,
+        effects: List[str] = None,
+        params: dict = None,
+        postprocess: Optional[dict] = None,
+    ) -> str:
         """
         Основной метод для уникализации видео с VidGear fallback
         
@@ -637,8 +648,14 @@ class VideoUniquizer:
                 if effect == 'temporal':
                     self._update_progress("⏱️ Applying temporal effects...")
                     # Извлекаем параметры скорости
-                    speed_factor = params.get('speed', None)
-                    trim_amount = params.get('trim', None)
+                    if postprocess and postprocess.get('speed_factor') is not None:
+                        speed_factor = postprocess.get('speed_factor')
+                    else:
+                        speed_factor = params.get('speed')
+                    if postprocess and postprocess.get('trim_seconds') is not None:
+                        trim_amount = postprocess.get('trim_seconds')
+                    else:
+                        trim_amount = params.get('trim')
                     self.apply_temporal_effects(current_path, temp_path, speed_factor, trim_amount)
                 elif effect == 'visual':
                     self._update_progress("👁️ Applying visual effects...")
@@ -681,6 +698,13 @@ class VideoUniquizer:
                 if i < len(effects) - 1:  # Создаем новый временный файл
                     temp_path = f"temp_{random.randint(1000, 9999)}.mp4"
             
+            # Дополнительная пост-обработка через ffmpeg при необходимости
+            if postprocess:
+                try:
+                    current_path = self._apply_ffmpeg_postprocess(current_path, postprocess)
+                except Exception as post_err:
+                    self._update_progress(f"⚠️ Post-process failed: {post_err}")
+
             # Переименовываем финальный файл
             os.rename(current_path, output_path)
             total_time = time.time() - start_time
@@ -824,6 +848,99 @@ class VideoUniquizer:
             result2 = subprocess.run(cmd_fallback, capture_output=True, text=True)
             if result2.returncode != 0 or not os.path.exists(final_output):
                 raise RuntimeError(f"ffmpeg mux failed: {result.stderr or result2.stderr}")
+
+    def _apply_ffmpeg_postprocess(self, input_path: str, meta: dict) -> str:
+        """
+        Выполняет дополнительную пост-обработку видео через ffmpeg на основе переданных параметров.
+
+        Args:
+            input_path: путь к входному файлу
+            meta: словарь с параметрами пост-обработки
+
+        Returns:
+            Путь к обработанному файлу (заменяет оригинальный)
+        """
+        from pathlib import Path
+
+        trim_seconds = float(meta.get('trim_seconds', 0))
+        speed_factor = float(meta.get('speed_factor', 1.0))
+        crop_factor = float(meta.get('crop_factor', 1.0))
+        contrast = float(meta.get('contrast', 1.0))
+        saturation = float(meta.get('saturation', 1.0))
+        volume = float(meta.get('volume', 1.0))
+        video_bitrate = str(meta.get('video_bitrate', '1.4M'))
+        maxrate = str(meta.get('maxrate', video_bitrate))
+        bufsize = str(meta.get('bufsize', '2.8M'))
+        audio_bitrate = str(meta.get('audio_bitrate', '128k'))
+        preset = str(meta.get('preset', 'medium'))
+
+        temp_output = str(Path(input_path).with_name(f"{Path(input_path).stem}_post.mp4"))
+
+        video_filters = []
+        if crop_factor < 1.0:
+            crop_expr = f"crop=iw*{crop_factor:.5f}:ih*{crop_factor:.5f}"
+            scale_factor = 1.0 / crop_factor
+            scale_expr = (
+                f"scale=trunc(iw*{scale_factor:.5f}/2)*2:"
+                f"trunc(ih*{scale_factor:.5f}/2)*2"
+            )
+            video_filters.extend([crop_expr, scale_expr])
+        video_filters.append(f"eq=contrast={contrast:.2f}:saturation={saturation:.2f}")
+        if abs(speed_factor - 1.0) > 1e-3:
+            video_filters.append(f"setpts=PTS/{speed_factor:.5f}")
+
+        audio_filters = []
+        if abs(volume - 1.0) > 1e-3:
+            audio_filters.append(f"volume={volume:.5f}")
+        if abs(speed_factor - 1.0) > 1e-3:
+            if speed_factor < 0.5 or speed_factor > 2.0:
+                raise ValueError("Speed factor for audio must be between 0.5 and 2.0")
+            audio_filters.append(f"atempo={speed_factor:.5f}")
+
+        filter_complex_parts = []
+        filter_complex_parts.append(f"[0:v]{','.join(video_filters)}[v]")
+        if audio_filters:
+            filter_complex_parts.append(f"[0:a]{','.join(audio_filters)}[a]")
+
+        filter_complex = ";".join(filter_complex_parts)
+
+        cmd = ['ffmpeg', '-y']
+        if trim_seconds > 0:
+            cmd.extend(['-ss', f"{trim_seconds:.3f}"])
+        cmd.extend(['-i', input_path, '-filter_complex', filter_complex, '-map', '[v]'])
+
+        if audio_filters:
+            cmd.extend(['-map', '[a]'])
+        else:
+            cmd.extend(['-map', '0:a:0?', '-c:a', 'copy'])
+
+        if not audio_filters:
+            # Audio copy already configured, ensure command aligns with structure
+            pass
+
+        cmd.extend([
+            '-c:v', 'libx264',
+            '-preset', preset,
+            '-b:v', video_bitrate,
+            '-maxrate', maxrate,
+            '-bufsize', bufsize,
+            '-movflags', '+faststart'
+        ])
+
+        if audio_filters:
+            cmd.extend(['-c:a', 'aac', '-b:a', audio_bitrate])
+
+        cmd.append(temp_output)
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0 or not os.path.exists(temp_output):
+            raise RuntimeError(f"ffmpeg post-process failed: {result.stderr}")
+
+        # Заменяем исходный файл новым
+        os.remove(input_path)
+        os.rename(temp_output, input_path)
+
+        return input_path
 
 
 def main():

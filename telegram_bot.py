@@ -367,6 +367,23 @@ INSTAGRAM_FILTERS = {
     }
 }
 
+DEFAULT_POSTPROCESS_META = {
+    'trim_seconds': 2.0,
+    'speed_factor': 1.05,
+    'crop_factor': 0.95,
+    'contrast': 1.15,
+    'saturation': 1.10,
+    'volume': 0.85,
+    'video_bitrate': '1.4M',
+    'maxrate': '1.4M',
+    'bufsize': '2.8M',
+    'audio_bitrate': '128k',
+    'preset': 'medium'
+}
+
+for filter_info in INSTAGRAM_FILTERS.values():
+    filter_info.setdefault('postprocess', dict(DEFAULT_POSTPROCESS_META))
+
 
 class WebSocketUploadProgress:
     """WebSocket upload progress tracker"""
@@ -482,6 +499,53 @@ class TelegramVideoBot:
         except Exception as e:
             logger.error(f"Ошибка инициализации папок Yandex Disk: {e}")
     
+    @staticmethod
+    def build_processing_summary_text(postprocess_meta: Optional[dict]) -> str:
+        """Формирует текстовое описание параметров уникализации"""
+        if not postprocess_meta:
+            return ""
+
+        lines: List[str] = []
+
+        trim_seconds = postprocess_meta.get('trim_seconds')
+        if trim_seconds:
+            lines.append(f"- ✂️ Обрезка: {trim_seconds:.0f} c от начала")
+
+        speed_factor = postprocess_meta.get('speed_factor')
+        if speed_factor and abs(speed_factor - 1.0) > 1e-3:
+            speed_pct = (speed_factor - 1.0) * 100
+            sign = "+" if speed_pct >= 0 else ""
+            lines.append(f"- ⚡ Скорость: {sign}{speed_pct:.1f}%")
+
+        crop_factor = postprocess_meta.get('crop_factor')
+        if crop_factor and crop_factor < 1.0:
+            crop_pct = (1.0 - crop_factor) * 100
+            lines.append(f"- 🎯 Кадрирование: {crop_pct:.1f}% с последующим увеличением кадра")
+
+        contrast = postprocess_meta.get('contrast')
+        saturation = postprocess_meta.get('saturation')
+        if contrast or saturation:
+            contrast_text = f"контраст x{contrast:.2f}" if contrast else ""
+            saturation_text = f"насыщенность x{saturation:.2f}" if saturation else ""
+            effect_parts = [part for part in [contrast_text, saturation_text] if part]
+            if effect_parts:
+                lines.append(f"- 🎨 Видеофильтр: {', '.join(effect_parts)}")
+
+        volume = postprocess_meta.get('volume')
+        if volume and abs(volume - 1.0) > 1e-3:
+            lines.append(f"- 🔊 Громкость: {volume * 100:.0f}%")
+
+        video_bitrate = postprocess_meta.get('video_bitrate')
+        if video_bitrate:
+            lines.append(f"- 📉 Видеобитрейт: {video_bitrate}")
+
+        if not lines:
+            return ""
+
+        header = "🔧 Настройки уникализации:"
+        summary = "\n".join([header, *lines])
+        return summary
+
     async def create_yandex_folders(self, blogger_name, folder_name):
         """Создает структуру папок для блогера на Yandex Disk"""
         try:
@@ -2251,21 +2315,33 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 # Отправляем результат
                 file_size_mb = os.path.getsize(result_path) / (1024 * 1024)
                 
-                await query.edit_message_text(
+                summary_message = self.build_processing_summary_text(filter_info.get('postprocess'))
+                status_text = (
                     f"✅ **Обработка завершена!**\n\n"
                     f"🎨 Фильтр: {filter_info['name']}\n"
                     f"📁 Размер: {file_size_mb:.1f} MB\n"
                     f"📊 Отличие от оригинала: {difference_pct:.1f}%\n\n"
                     f"📤 Отправляю видео..."
                 )
+                if summary_message:
+                    status_text += f"\n\n{summary_message}"
+
+                await query.edit_message_text(status_text)
                 
                 # Отправляем видео
+                processing_summary = self.build_processing_summary_text(filter_info.get('postprocess'))
+                caption_text = (
+                    f"✅ **Готово!**\n\n"
+                    f"🎨 Фильтр: {filter_info['name']}\n"
+                    f"📁 Размер: {file_size_mb:.1f} MB\n"
+                    f"📊 **Отличие от оригинала:** {difference_pct:.1f}%"
+                )
+                if processing_summary:
+                    caption_text += f"\n\n{processing_summary}"
+
                 sent_message = await query.message.reply_video(
                     video=open(result_path, 'rb'),
-                    caption=f"✅ **Готово!**\n\n"
-                           f"🎨 Фильтр: {filter_info['name']}\n"
-                           f"📁 Размер: {file_size_mb:.1f} MB\n"
-                           f"📊 **Отличие от оригинала:** {difference_pct:.1f}%",
+                    caption=caption_text,
                     supports_streaming=True,
                     parse_mode='Markdown'
                 )
@@ -2516,7 +2592,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 input_path=input_path,
                 output_path=output_path,
                 effects=filter_info['effects'],
-                params=filter_info.get('params', {})
+                params=filter_info.get('params', {}),
+                postprocess=filter_info.get('postprocess')
             )
             
             return result
@@ -2957,7 +3034,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             input_path=chunk,
                             output_path=chunk.replace('.mp4', '_processed.mp4'),
                             effects=selected_filters[0]['effects'],  # Используем первый фильтр для всех частей
-                            params=selected_filters[0].get('params', {})
+                            params=selected_filters[0].get('params', {}),
+                            postprocess=selected_filters[0].get('postprocess')
                         )
                         
                         if processed_chunk:
@@ -3207,6 +3285,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             reply_markup = InlineKeyboardMarkup(keyboard)
             
+            postprocess_meta = selected_filters[0].get('postprocess') if selected_filters else None
+            summary_message = self.build_processing_summary_text(postprocess_meta)
+
             info_lines = [
                 f"✅ Создано {len(processed_videos)} видео и отправлено на аппрув!",
                 f"🆔 ID аппрува: {', '.join(approval_ids)}",
@@ -3216,6 +3297,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
             if folder_name:
                 info_lines.append(f"📁 Папка: {folder_name}")
             info_lines.append("⚡ Быстрое решение:")
+            if summary_message:
+                info_lines.append("")
+                info_lines.append(summary_message)
             
             await query.message.reply_text(
                 "\n".join(info_lines),
@@ -3275,7 +3359,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                             input_path=compressed_chunk,
                             output_path=chunk.replace('.mp4', '_processed.mp4'),
                             effects=task['filter_info']['effects'],
-                            params=task['filter_info'].get('params', {})
+                            params=task['filter_info'].get('params', {}),
+                            postprocess=task['filter_info'].get('postprocess')
                         )
                         
                         if processed_chunk:
@@ -3359,7 +3444,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         input_path=compressed_input_path,
                         output_path=task['output_path'],
                         effects=task['filter_info']['effects'],
-                        params=task['filter_info'].get('params', {})
+                        params=task['filter_info'].get('params', {}),
+                        postprocess=task['filter_info'].get('postprocess')
                     )
             else:
                 # Обычная обработка для небольших файлов
@@ -3430,7 +3516,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     input_path=compressed_input_path,
                     output_path=task['output_path'],
                     effects=task['filter_info']['effects'],
-                    params=task['filter_info'].get('params', {})
+            params=task['filter_info'].get('params', {}),
+            postprocess=task['filter_info'].get('postprocess')
                 )
             
             # Логируем результат обработки
@@ -3765,7 +3852,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                         input_path=str(input_path),
                         output_path=str(output_path),
                         effects=filter_info['effects'],
-                        params=filter_info.get('params', {})
+                        params=filter_info.get('params', {}),
+                        postprocess=filter_info.get('postprocess')
                     )
                     
                     # Загружаем на Yandex Disk
@@ -3803,6 +3891,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
                                    f"🎨 Фильтр: {filter_info['name']}\n"
                                    f"📁 Размер: {os.path.getsize(video_data['path']) / (1024*1024):.1f} MB{difference_text}"
                                    + (f"\n☁️ Yandex Disk: {video_data['yandex_url']}" if video_data.get('yandex_url') else ""))
+                    processing_summary = self.build_processing_summary_text(filter_info.get('postprocess'))
+                    if processing_summary:
+                        caption_text += f"\n\n{processing_summary}"
                     
                     await query.message.reply_video(
                         video=open(video_data['path'], 'rb'),
@@ -3837,10 +3928,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'batch_total': video_count
                 }
             
-            await query.message.reply_text(
+            summary_message = self.build_processing_summary_text(filter_info.get('postprocess'))
+            status_text = (
                 f"✅ Создано {len(processed_videos)} видео и отправлено на аппрув!\n"
                 f"⏳ Ожидайте одобрения менеджера."
             )
+            if summary_message:
+                status_text += f"\n\n{summary_message}"
+
+            await query.message.reply_text(status_text)
             
         except Exception as e:
             logger.error(f"Ошибка обработки множественных видео: {e}")
@@ -3968,7 +4064,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 input_path=str(input_path),
                 output_path=str(output_path),
                 effects=filter_info['effects'],
-                params=filter_info.get('params', {})
+                params=filter_info.get('params', {}),
+                postprocess=filter_info.get('postprocess')
             )
             
             # Уведомляем о завершении обработки
@@ -3990,16 +4087,23 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Отправляем результат с WebSocket progress
             result_filename = f"processed_{user_id}_{filter_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            processing_summary = self.build_processing_summary_text(filter_info.get('postprocess'))
+            caption_text = (
+                f"✅ **ГОТОВО!**\n\n"
+                f"🎨 Фильтр: {filter_info['name']}\n"
+                f"📁 Размер: {os.path.getsize(result_path) / (1024*1024):.1f} MB\n"
+                f"📂 Локальный путь: `{result_path}`"
+                + (f"\n☁️ Yandex Disk: {yandex_url}" if yandex_url else "")
+            )
+            if processing_summary:
+                caption_text += f"\n\n{processing_summary}"
+
             upload_result = await self.upload_video_with_progress(
                 file_path=result_path,
                 user_id=user_id,
                 context=context,
                 filename=result_filename,
-                caption=f"✅ **ГОТОВО!**\n\n"
-                       f"🎨 Фильтр: {filter_info['name']}\n"
-                       f"📁 Размер: {os.path.getsize(result_path) / (1024*1024):.1f} MB\n"
-                       f"📂 Локальный путь: `{result_path}`"
-                       + (f"\n☁️ Yandex Disk: {yandex_url}" if yandex_url else "")
+                caption=caption_text
             )
             
             # Очищаем временные файлы
@@ -4023,11 +4127,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 'approval_id': approval_id
             }
             
-            await query.message.reply_text(
+            summary_message = self.build_processing_summary_text(filter_info.get('postprocess'))
+            status_text = (
                 f"✅ Видео обработано и отправлено на аппрув!\n"
                 f"🆔 ID аппрува: {approval_id}\n"
                 f"⏳ Ожидайте одобрения менеджера."
             )
+            if summary_message:
+                status_text += f"\n\n{summary_message}"
+
+            await query.message.reply_text(status_text)
             
         except Exception as e:
             logger.error(f"Ошибка обработки видео: {e}")
