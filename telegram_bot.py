@@ -5219,6 +5219,37 @@ ID сценария: {video_data['metadata']['scenario_id']}
             logger.error(f"❌ Compression error: {e}")
             return file_path
 
+    def _extract_message_media_info(self, message, default_filename: str) -> dict:
+        """Извлекает информацию о загруженном файле из сообщения Telegram"""
+        if message is None:
+            raise ValueError("Telegram API не вернул сообщение после загрузки файла.")
+
+        if getattr(message, "document", None):
+            doc = message.document
+            return {
+                "file_id": doc.file_id,
+                "file_size": doc.file_size,
+                "filename": doc.file_name or default_filename,
+            }
+
+        if getattr(message, "video", None):
+            vid = message.video
+            return {
+                "file_id": vid.file_id,
+                "file_size": vid.file_size,
+                "filename": default_filename,
+            }
+
+        if getattr(message, "animation", None):
+            anim = message.animation
+            return {
+                "file_id": anim.file_id,
+                "file_size": anim.file_size,
+                "filename": default_filename,
+            }
+
+        raise ValueError("Загруженное сообщение не содержит поддерживаемого медиа-объекта (document/video/animation).")
+
     async def upload_video_with_progress(self, file_path: str, user_id: int, context, 
                                       filename: str, caption: str = "") -> dict:
         """Upload video with WebSocket progress tracking and .MOV compression"""
@@ -5278,11 +5309,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to clean up compressed file: {e}")
             
-            return {
-                'file_id': message.document.file_id,
-                'file_size': message.document.file_size,
-                'filename': message.document.file_name
-            }
+            return self._extract_message_media_info(message, filename)
             
         except Exception as e:
             if user_id in self.upload_progress:
@@ -5378,12 +5405,9 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Return info about the first chunk (main document)
             first_message = messages[0]
             progress.set_status("completed")
-            return {
-                'file_id': first_message.document.file_id,
-                'file_size': first_message.document.file_size,
-                'filename': first_message.document.file_name,
-                'chunks': len(temp_chunks)
-            }
+            info = self._extract_message_media_info(first_message, filename)
+            info['chunks'] = len(temp_chunks)
+            return info
             
         except Exception as e:
             progress.set_status(f"error: {str(e)}")
