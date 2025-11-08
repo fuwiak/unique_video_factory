@@ -753,13 +753,56 @@ class TelegramVideoBot:
         reedit_filename = f"reedit_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
         output_path = self.temp_dir / reedit_filename
 
-        uniquizer = VideoUniquizer()
-        result_path = uniquizer.uniquize_video(
-            input_path=str(original_path),
-            output_path=str(output_path),
-            effects=filter_info['effects'],
-            params=params,
-            postprocess=final_postprocess
+        loop = asyncio.get_running_loop()
+        last_update_time = [0.0]
+
+        def progress_callback(message: str, progress_pct: Optional[float] = None):
+            try:
+                now = time.time()
+                if now - last_update_time[0] < 2.0 and (progress_pct is None or progress_pct < 100):
+                    return
+                last_update_time[0] = now
+
+                progress_lines = [
+                    "♻️ **Переобработка видео...**",
+                    "",
+                    f"🎨 Фильтр: {filter_info['name']}",
+                    "",
+                    message
+                ]
+
+                if progress_pct is not None:
+                    progress_bar_len = 20
+                    filled = int(progress_pct / 100 * progress_bar_len)
+                    filled = min(progress_bar_len, max(0, filled))
+                    bar = "█" * filled + "░" * (progress_bar_len - filled)
+                    progress_lines.extend([
+                        "",
+                        f"`{bar}` {progress_pct:.1f}%"
+                    ])
+
+                async def update_message():
+                    try:
+                        await query.edit_message_text(
+                            "\n".join(progress_lines),
+                            parse_mode='Markdown'
+                        )
+                    except Exception as edit_err:
+                        logger.debug(f"Progress update error (reedit): {edit_err}")
+
+                asyncio.run_coroutine_threadsafe(update_message(), loop)
+            except Exception as progress_err:
+                logger.error(f"Progress callback error (reedit): {progress_err}")
+
+        result_path = await loop.run_in_executor(
+            None,
+            self.process_video_sync,
+            str(original_path),
+            str(output_path),
+            filter_info,
+            params,
+            final_postprocess,
+            progress_callback
         )
 
         await query.edit_message_text(
