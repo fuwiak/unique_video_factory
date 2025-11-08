@@ -963,9 +963,12 @@ class TelegramVideoBot:
                     settings_text += f"• {param}: **{value}**\n"
                 settings_text += "\n📝 Выберите параметр для изменения:"
             else:
-                settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
-                settings_text += "🎯 Используются стандартные значения\n\n"
-                settings_text += "📝 Выберите параметр для настройки:"
+                settings_text = (
+                    "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+                    "🎯 Используются стандартные значения\n\n"
+                    "📝 Выберите параметр для настройки:\n\n"
+                    "♻️ *Эти же настройки будут применены при переобработке.*"
+                )
             
             await query.edit_message_text(
                 settings_text,
@@ -1284,11 +1287,15 @@ class TelegramVideoBot:
             settings_text += "**Текущие значения:**\n"
             for param, value in current_settings.items():
                 settings_text += f"• {param}: **{value}**\n"
-            settings_text += "\n📝 Выберите параметр для изменения:"
+            settings_text += "\n📝 Выберите параметр для изменения:\n\n"
+            settings_text += "♻️ *Эти настройки также будут применены при переобработке.*"
         else:
-            settings_text = "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
-            settings_text += "🎯 Используются стандартные значения\n\n"
-            settings_text += "📝 Выберите параметр для настройки:"
+            settings_text = (
+                "⚙️ **НАСТРОЙКИ ПАРАМЕТРОВ ФИЛЬТРОВ**\n\n"
+                "🎯 Используются стандартные значения\n\n"
+                "📝 Выберите параметр для настройки:\n\n"
+                "♻️ *Эти же настройки будут применены при переобработке.*"
+            )
         
         await update.message.reply_text(
             settings_text,
