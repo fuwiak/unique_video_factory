@@ -861,7 +861,8 @@ class TelegramVideoBot:
         except Exception as diff_err:
             logger.debug(f"Difference calculation failed (reedit): {diff_err}")
 
-        user_states[user_id]['quick_result'] = {
+        quick_state = user_states.setdefault(user_id, {})
+        quick_result_entry = {
             'result_path': str(result_path),
             'input_path': str(original_path),
             'original_copy': str(original_path),
@@ -875,6 +876,11 @@ class TelegramVideoBot:
             'yandex_remote_path': yandex_remote_path,
             'upload_info': upload_info,
         }
+        quick_state.setdefault('original_result', quick_result_entry.copy())
+        quick_state.setdefault('reedit_history', [])
+        quick_state['reedit_history'].append(quick_result_entry.copy())
+        quick_state['quick_result'] = quick_result_entry.copy()
+        quick_state['last_reedit_result'] = quick_result_entry.copy()
 
         status_text = (
             "📋 **Что делать дальше?**\n\n"
@@ -2698,14 +2704,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     logger.warning(f"⚠️ Не удалось создать копию оригинального видео (quick mode): {copy_err}")
                     original_source = str(input_path)
 
-                user_states[user_id]['original_video'] = original_source
-                user_states[user_id]['session_id'] = session_id
-                user_states[user_id]['filter_id'] = filter_id
-                user_states[user_id]['filter'] = filter_info['name']
+                state = user_states.setdefault(user_id, {})
+                state['original_video'] = original_source
+                state['session_id'] = session_id
+                state['filter_id'] = filter_id
+                state['filter'] = filter_info['name']
 
-                user_states[user_id]['applied_params'] = dict(params)
-                user_states[user_id]['applied_postprocess'] = dict(final_postprocess)
-                user_states[user_id]['postprocess_overrides'] = dict(postprocess_overrides)
+                state['applied_params'] = dict(params)
+                state['applied_postprocess'] = dict(final_postprocess)
+                state['postprocess_overrides'] = dict(postprocess_overrides)
 
                 processing_summary = self.build_processing_summary_text(final_postprocess)
                 caption_text = (
@@ -2725,7 +2732,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 )
                 
                 # Сохраняем информацию для возможности загрузки на Yandex Disk
-                user_states[user_id]['quick_result'] = {
+                quick_result_entry = {
                     'result_path': str(result_path),
                     'input_path': str(input_path),
                     'original_copy': original_source,
@@ -2734,9 +2741,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     'file_size_mb': file_size_mb,
                     'difference_pct': difference_pct,
                     'session_id': session_id,
-                    'postprocess': dict(final_postprocess)
+                    'postprocess': dict(final_postprocess),
+                    'yandex_url': None,
+                    'yandex_remote_path': None,
+                    'upload_info': None,
                 }
-                user_states[user_id]['status'] = 'completed'
+                state['quick_result'] = quick_result_entry
+                state.setdefault('original_result', quick_result_entry.copy())
+                state.setdefault('reedit_history', [])
+                state['status'] = 'completed'
                 
                 # Показываем кнопки с опциями
                 keyboard = [
@@ -2803,29 +2816,48 @@ ID сценария: {video_data['metadata']['scenario_id']}
         
         user_id = query.from_user.id
         
-        if user_id in user_states and 'quick_result' in user_states[user_id]:
-            quick_result = user_states[user_id]['quick_result']
-            
-            # Удаляем временные файлы
-            for path_key in ['result_path', 'input_path', 'original_copy']:
-                if path_key in quick_result:
-                    path = quick_result[path_key]
-                    if os.path.exists(path):
-                        try:
-                            os.remove(path)
-                            logger.info(f"Удален временный файл: {path}")
-                        except Exception as e:
-                            logger.error(f"Ошибка удаления файла {path}: {e}")
-            
+        if user_id in user_states:
+            state = user_states[user_id]
+            temp_paths = set()
+
+            def collect_paths(entry: Optional[dict]):
+                if not entry:
+                    return
+                for key in ['result_path', 'input_path', 'original_copy']:
+                    path = entry.get(key)
+                    if path:
+                        temp_paths.add(path)
+
+            collect_paths(state.get('quick_result'))
+            collect_paths(state.get('original_result'))
+            collect_paths(state.get('last_reedit_result'))
+            for history_entry in state.get('reedit_history', []):
+                collect_paths(history_entry)
+
+            for path in temp_paths:
+                if os.path.exists(path):
+                    try:
+                        os.remove(path)
+                        logger.info(f"Удален временный файл: {path}")
+                    except Exception as e:
+                        logger.error(f"Ошибка удаления файла {path}: {e}")
+
             # Очищаем состояние
-            del user_states[user_id]['quick_result']
-            user_states[user_id].pop('original_video', None)
-            user_states[user_id].pop('session_id', None)
-            user_states[user_id].pop('applied_params', None)
-            user_states[user_id].pop('applied_postprocess', None)
-            user_states[user_id].pop('postprocess_overrides', None)
-            user_states[user_id].pop('filter_id', None)
-            user_states[user_id].pop('filter', None)
+            for key in [
+                'quick_result',
+                'original_result',
+                'last_reedit_result',
+                'reedit_history',
+                'original_video',
+                'session_id',
+                'applied_params',
+                'applied_postprocess',
+                'postprocess_overrides',
+                'filter_id',
+                'filter',
+                'status',
+            ]:
+                state.pop(key, None)
         
         await query.edit_message_text(
             "✅ **Готово!**\n\n"
