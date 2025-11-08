@@ -4,11 +4,12 @@ Telegram Bot для уникализации видео с интеграцие�
 """
 
 import os
+import shutil
 import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Tuple
 import json
 import uuid
 import threading
@@ -368,7 +369,8 @@ INSTAGRAM_FILTERS = {
 }
 
 DEFAULT_POSTPROCESS_META = {
-    'trim_seconds': 2.0,
+    'trim_start': 2.0,
+    'trim_end': 0.0,
     'speed_factor': 1.05,
     'crop_factor': 0.95,
     'contrast': 1.15,
@@ -507,9 +509,20 @@ class TelegramVideoBot:
 
         lines: List[str] = []
 
+        trim_start = postprocess_meta.get('trim_start')
+        trim_end = postprocess_meta.get('trim_end')
         trim_seconds = postprocess_meta.get('trim_seconds')
-        if trim_seconds:
-            lines.append(f"- ✂️ Обрезка: {trim_seconds:.0f} c от начала")
+        if trim_seconds and trim_start is None and trim_end is None:
+            trim_start = trim_seconds
+            trim_end = trim_seconds
+
+        if trim_start or trim_end:
+            start_display = (trim_start or 0.0)
+            end_display = (trim_end or 0.0)
+            if end_display > 0:
+                lines.append(f"- ✂️ Обрезка: старт {start_display:.1f}с, конец {end_display:.1f}с")
+            else:
+                lines.append(f"- ✂️ Обрезка: старт {start_display:.1f}с")
 
         speed_factor = postprocess_meta.get('speed_factor')
         if speed_factor and abs(speed_factor - 1.0) > 1e-3:
@@ -545,6 +558,275 @@ class TelegramVideoBot:
         header = "🔧 Настройки уникализации:"
         summary = "\n".join([header, *lines])
         return summary
+
+    def compose_processing_parameters(self, user_id: int, filter_id: str) -> Tuple[dict, dict, dict]:
+        """Формирует параметры эффектов и пост-обработки с учетом пользовательских настроек"""
+        filter_info = INSTAGRAM_FILTERS[filter_id]
+        params: Dict[str, float] = dict(filter_info.get('params', {}))
+        postprocess_overrides: Dict[str, object] = {}
+
+        custom_settings = user_custom_params.get(user_id, {})
+        for key, value in custom_settings.items():
+            if key in {'speed', 'trim', 'brightness', 'warmth', 'blur'}:
+                params[key] = value
+            elif key in {'contrast', 'saturation'}:
+                params[key] = value
+                postprocess_overrides[key] = value
+            elif key == 'trim_start':
+                postprocess_overrides['trim_start'] = value
+            elif key == 'trim_end':
+                postprocess_overrides['trim_end'] = value
+            elif key == 'volume':
+                postprocess_overrides['volume'] = value
+            elif key == 'video_bitrate':
+                try:
+                    bitrate_float = max(0.3, float(value))
+                except (TypeError, ValueError):
+                    bitrate_float = DEFAULT_POSTPROCESS_META.get('video_bitrate', '1.4M')
+                    if isinstance(bitrate_float, str) and bitrate_float.endswith('M'):
+                        bitrate_float = float(bitrate_float.rstrip('M'))
+                    else:
+                        bitrate_float = 1.4
+                if abs(bitrate_float - round(bitrate_float)) < 1e-3:
+                    bitrate_str = f"{int(round(bitrate_float))}M"
+                else:
+                    bitrate_str = f"{bitrate_float:.1f}M"
+                buf_value = max(0.3, bitrate_float * 2)
+                if abs(buf_value - round(buf_value)) < 1e-3:
+                    buf_str = f"{int(round(buf_value))}M"
+                else:
+                    buf_str = f"{buf_value:.1f}M"
+                postprocess_overrides['video_bitrate'] = bitrate_str
+                postprocess_overrides['maxrate'] = bitrate_str
+                postprocess_overrides['bufsize'] = buf_str
+
+        speed_value = params.get('speed')
+        if speed_value is not None:
+            postprocess_overrides['speed_factor'] = speed_value
+
+        if 'trim_start' not in postprocess_overrides or 'trim_end' not in postprocess_overrides:
+            trim_value = params.get('trim')
+            if trim_value is not None:
+                postprocess_overrides.setdefault('trim_start', trim_value)
+                postprocess_overrides.setdefault('trim_end', trim_value)
+
+        postprocess_meta = dict(DEFAULT_POSTPROCESS_META)
+        postprocess_meta.update(filter_info.get('postprocess', {}))
+        postprocess_meta.update(postprocess_overrides)
+
+        return params, postprocess_meta, postprocess_overrides
+
+    async def show_reedit_menu(self, query, user_id: int, *, edit: bool = False):
+        """Отображает меню переобработки видео"""
+        original_info = user_states.get(user_id, {})
+        original_path = original_info.get('original_video')
+        if not original_path or not os.path.exists(original_path):
+            await query.message.reply_text("❌ Оригинальное видео недоступно для переобработки.")
+            return
+
+        filter_id = original_info.get('filter_id')
+        if not filter_id or filter_id not in INSTAGRAM_FILTERS:
+            filter_id = next(iter(INSTAGRAM_FILTERS.keys()))
+            user_states.setdefault(user_id, {})['filter_id'] = filter_id
+            user_states[user_id]['filter'] = INSTAGRAM_FILTERS[filter_id]['name']
+
+        params_preview, postprocess_preview, _ = self.compose_processing_parameters(user_id, filter_id)
+        summary = self.build_processing_summary_text(postprocess_preview)
+
+        filter_name = INSTAGRAM_FILTERS[filter_id]['name']
+        original_display = os.path.basename(original_path)
+        text_lines = [
+            "♻️ **ПЕРЕРАБОТКА ВИДЕО**",
+            "",
+            f"🎨 Текущий фильтр: *{filter_name}*",
+            f"📂 Оригинал: `{original_display}`"
+        ]
+        if summary:
+            text_lines.append("")
+            text_lines.append(summary)
+        text_lines.append("")
+        text_lines.append("Выберите действие:")
+
+        keyboard = [
+            [InlineKeyboardButton("⚙️ Настроить параметры", callback_data="reedit_settings")],
+            [InlineKeyboardButton("🎨 Выбрать фильтр", callback_data="reedit_filter_menu")],
+            [InlineKeyboardButton("🚀 Запустить переобработку", callback_data="reedit_apply")],
+            [InlineKeyboardButton("❌ Отмена", callback_data="reedit_cancel")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        if edit:
+            await query.edit_message_text(
+                "\n".join(text_lines),
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+        else:
+            await query.message.reply_text(
+                "\n".join(text_lines),
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+
+    async def handle_reedit_open(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Открывает меню переобработки"""
+        query = update.callback_query
+        await query.answer()
+        await self.show_reedit_menu(query, query.from_user.id, edit=False)
+
+    async def handle_reedit_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Открывает меню настройки параметров перед переобработкой"""
+        query = update.callback_query
+        await query.answer()
+        await self.show_settings_menu(query, query.from_user.id)
+
+    async def handle_reedit_show_filters(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Отображает список фильтров для выбора при переобработке"""
+        query = update.callback_query
+        await query.answer()
+
+        keyboard = []
+        for filter_key, info in INSTAGRAM_FILTERS.items():
+            keyboard.append([InlineKeyboardButton(info['name'], callback_data=f"reeditfilter_{filter_key}")])
+        keyboard.append([InlineKeyboardButton("« Назад", callback_data="reedit_back")])
+
+        await query.edit_message_text(
+            "🎨 **Выберите фильтр для переобработки:**",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode='Markdown'
+        )
+
+    async def handle_reedit_select_filter(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Сохраняет выбранный фильтр для переобработки"""
+        query = update.callback_query
+        await query.answer()
+        user_id = query.from_user.id
+        filter_id = query.data.replace("reeditfilter_", "")
+
+        if filter_id not in INSTAGRAM_FILTERS:
+            await query.edit_message_text("❌ Неизвестный фильтр.")
+            return
+
+        user_states.setdefault(user_id, {})['filter_id'] = filter_id
+        user_states[user_id]['filter'] = INSTAGRAM_FILTERS[filter_id]['name']
+
+        await self.show_reedit_menu(query, user_id, edit=True)
+
+    async def handle_reedit_back(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Возвращает пользователя в меню переобработки"""
+        query = update.callback_query
+        await query.answer()
+        await self.show_reedit_menu(query, query.from_user.id, edit=True)
+
+    async def handle_reedit_cancel(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Закрывает меню переобработки"""
+        query = update.callback_query
+        await query.answer()
+        await query.edit_message_text("🚫 Переобработка отменена.")
+
+    async def handle_reedit_apply(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Запускает повторную обработку видео с новыми настройками"""
+        query = update.callback_query
+        await query.answer()
+        user_id = query.from_user.id
+
+        user_info = user_states.get(user_id, {})
+        original_path = user_info.get('original_video')
+        if not original_path or not os.path.exists(original_path):
+            await query.edit_message_text("❌ Оригинальное видео не найдено. Отправьте файл заново.")
+            return
+
+        filter_id = user_info.get('filter_id')
+        if not filter_id or filter_id not in INSTAGRAM_FILTERS:
+            await query.edit_message_text("❌ Фильтр не выбран. Используйте меню для выбора фильтра.")
+            return
+
+        filter_info = INSTAGRAM_FILTERS[filter_id]
+        params, final_postprocess, postprocess_overrides = self.compose_processing_parameters(user_id, filter_id)
+        user_states[user_id]['applied_params'] = dict(params)
+        user_states[user_id]['applied_postprocess'] = dict(final_postprocess)
+        user_states[user_id]['postprocess_overrides'] = dict(postprocess_overrides)
+
+        await query.edit_message_text("♻️ **Запускаю переобработку видео...**")
+
+        session_id = user_states[user_id].get('session_id') or str(uuid.uuid4())[:8]
+        reedit_filename = f"reedit_{session_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        output_path = self.temp_dir / reedit_filename
+
+        uniquizer = VideoUniquizer()
+        result_path = uniquizer.uniquize_video(
+            input_path=str(original_path),
+            output_path=str(output_path),
+            effects=filter_info['effects'],
+            params=params,
+            postprocess=final_postprocess
+        )
+
+        await query.edit_message_text(
+            f"✅ **Переобработка завершена!**\n\n"
+            f"🎨 Фильтр: {filter_info['name']}\n"
+            f"📁 Файл сохранен в: `{result_path}`\n"
+            f"📊 Размер: {os.path.getsize(result_path) / (1024*1024):.1f} MB\n\n"
+            f"📤 Отправляю готовое видео..."
+        )
+
+        yandex_url = None
+        yandex_remote_path = None
+        if self.yandex_disk:
+            yandex_url, yandex_remote_path = await self.upload_to_yandex_disk(
+                result_path, user_id, f"{filter_id}_reedit"
+            )
+
+        result_filename = f"processed_{user_id}_{filter_id}_reedit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        processing_summary = self.build_processing_summary_text(final_postprocess)
+        caption_text = (
+            f"✅ **ГОТОВО (переобработка)!**\n\n"
+            f"🎨 Фильтр: {filter_info['name']}\n"
+            f"📁 Размер: {os.path.getsize(result_path) / (1024*1024):.1f} MB\n"
+            f"📂 Локальный путь: `{result_path}`"
+            + (f"\n☁️ Yandex Disk: {yandex_url}" if yandex_url else "")
+        )
+        if processing_summary:
+            caption_text += f"\n\n{processing_summary}"
+
+        await self.upload_video_with_progress(
+            file_path=result_path,
+            user_id=user_id,
+            context=context,
+            filename=result_filename,
+            caption=caption_text
+        )
+
+        Path(result_path).unlink(missing_ok=True)
+
+        user_states[user_id]['status'] = 'completed'
+
+        approval_id = str(uuid.uuid4())[:8]
+        pending_approvals[approval_id] = {
+            'status': 'pending',
+            'user_id': user_id,
+            'user_name': query.from_user.first_name or 'Пользователь',
+            'filename': user_states[user_id].get('filename'),
+            'filter': filter_info['name'],
+            'video_path': result_path,
+            'yandex_remote_path': yandex_remote_path,
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'approval_id': approval_id
+        }
+
+        status_text = (
+            f"✅ Переобработанное видео отправлено на аппрув!\n"
+            f"🆔 ID аппрува: {approval_id}\n"
+            f"⏳ Ожидайте одобрения менеджера."
+        )
+        if processing_summary:
+            status_text += f"\n\n{processing_summary}"
+
+        reedit_keyboard = [
+            [InlineKeyboardButton("♻️ Перередактировать снова", callback_data="reedit_open")],
+            [InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]
+        ]
+        await query.message.reply_text(status_text, reply_markup=InlineKeyboardMarkup(reedit_keyboard))
 
     async def create_yandex_folders(self, blogger_name, folder_name):
         """Создает структуру папок для блогера на Yandex Disk"""
@@ -981,11 +1263,15 @@ class TelegramVideoBot:
         keyboard = [
             [InlineKeyboardButton("⚡ Скорость (Speed)", callback_data="adjust_speed")],
             [InlineKeyboardButton("✂️ Обрезка (Trim)", callback_data="adjust_trim")],
+            [InlineKeyboardButton("✂️ Обрезка начала", callback_data="adjust_trim_start")],
+            [InlineKeyboardButton("✂️ Обрезка конца", callback_data="adjust_trim_end")],
             [InlineKeyboardButton("🔆 Яркость (Brightness)", callback_data="adjust_brightness")],
             [InlineKeyboardButton("🎨 Контраст (Contrast)", callback_data="adjust_contrast")],
             [InlineKeyboardButton("🌈 Насыщенность (Saturation)", callback_data="adjust_saturation")],
             [InlineKeyboardButton("🔥 Теплота (Warmth)", callback_data="adjust_warmth")],
             [InlineKeyboardButton("🌫️ Размытие (Blur)", callback_data="adjust_blur")],
+            [InlineKeyboardButton("🔊 Громкость (Volume)", callback_data="adjust_volume")],
+            [InlineKeyboardButton("📉 Видеобитрейт", callback_data="adjust_video_bitrate")],
             [InlineKeyboardButton("🔄 Сбросить все", callback_data="adjust_reset")],
         ]
         
@@ -2746,6 +3032,20 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 ('1.0 сек', 1.0),
                 ('1.5 сек', 1.5),
             ],
+            'trim_start': [
+                ('0.0 сек', 0.0),
+                ('0.5 сек', 0.5),
+                ('1.0 сек', 1.0),
+                ('1.5 сек', 1.5),
+                ('2.0 сек', 2.0),
+            ],
+            'trim_end': [
+                ('0.0 сек', 0.0),
+                ('0.5 сек', 0.5),
+                ('1.0 сек', 1.0),
+                ('1.5 сек', 1.5),
+                ('2.0 сек', 2.0),
+            ],
             'brightness': [
                 ('-10 (темнее)', -10),
                 ('-5 (чуть темнее)', -5),
@@ -2781,6 +3081,20 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 ('0.7 (заметное)', 0.7),
                 ('1.0 (сильное)', 1.0),
             ],
+            'volume': [
+                ('60%', 0.60),
+                ('80%', 0.80),
+                ('85%', 0.85),
+                ('100%', 1.00),
+                ('110%', 1.10),
+            ],
+            'video_bitrate': [
+                ('1.0 Mbit/s', 1.0),
+                ('1.4 Mbit/s', 1.4),
+                ('1.8 Mbit/s', 1.8),
+                ('2.2 Mbit/s', 2.2),
+                ('2.8 Mbit/s', 2.8),
+            ],
         }
         
         if param_name not in param_values:
@@ -2802,11 +3116,15 @@ ID сценария: {video_data['metadata']['scenario_id']}
         param_names = {
             'speed': '⚡ Скорость',
             'trim': '✂️ Обрезка',
+            'trim_start': '✂️ Обрезка (начало)',
+            'trim_end': '✂️ Обрезка (конец)',
             'brightness': '🔆 Яркость',
             'contrast': '🎨 Контраст',
             'saturation': '🌈 Насыщенность',
             'warmth': '🔥 Теплота',
             'blur': '🌫️ Размытие',
+            'volume': '🔊 Громкость',
+            'video_bitrate': '📉 Видеобитрейт',
         }
         
         current_value = user_custom_params.get(user_id, {}).get(param_name, 'стандартное')
@@ -4047,7 +4365,25 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Скачиваем файл
             await file.download_to_drive(input_path)
-            
+
+            # Создаем копию исходного файла для повторной обработки
+            original_copy_path = self.temp_dir / f"original_{unique_id}_src.mp4"
+            preserve_input_file = False
+            try:
+                shutil.copy2(input_path, original_copy_path)
+                user_states[user_id]['original_video'] = str(original_copy_path)
+                user_states[user_id]['session_id'] = unique_id
+            except Exception as copy_err:
+                logger.warning(f"⚠️ Не удалось создать копию оригинального видео: {copy_err}")
+                user_states[user_id]['original_video'] = str(input_path)
+                preserve_input_file = True
+
+            # Готовим параметры обработки
+            params, final_postprocess, postprocess_overrides = self.compose_processing_parameters(user_id, filter_id)
+            user_states[user_id]['applied_params'] = dict(params)
+            user_states[user_id]['applied_postprocess'] = dict(final_postprocess)
+            user_states[user_id]['postprocess_overrides'] = dict(postprocess_overrides)
+
             # Уведомляем о начале обработки
             await query.edit_message_text(
                 f"🎬 **ОБРАБАТЫВАЮ ВИДЕО**\n\n"
@@ -4064,8 +4400,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 input_path=str(input_path),
                 output_path=str(output_path),
                 effects=filter_info['effects'],
-                params=filter_info.get('params', {}),
-                postprocess=filter_info.get('postprocess')
+                params=params,
+                postprocess=final_postprocess
             )
             
             # Уведомляем о завершении обработки
@@ -4087,7 +4423,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Отправляем результат с WebSocket progress
             result_filename = f"processed_{user_id}_{filter_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
-            processing_summary = self.build_processing_summary_text(filter_info.get('postprocess'))
+            processing_summary = self.build_processing_summary_text(final_postprocess)
             caption_text = (
                 f"✅ **ГОТОВО!**\n\n"
                 f"🎨 Фильтр: {filter_info['name']}\n"
@@ -4107,7 +4443,8 @@ ID сценария: {video_data['metadata']['scenario_id']}
             )
             
             # Очищаем временные файлы
-            input_path.unlink(missing_ok=True)
+            if not preserve_input_file:
+                input_path.unlink(missing_ok=True)
             output_path.unlink(missing_ok=True)
             
             # Обновляем состояние
@@ -4127,7 +4464,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 'approval_id': approval_id
             }
             
-            summary_message = self.build_processing_summary_text(filter_info.get('postprocess'))
+            summary_message = self.build_processing_summary_text(final_postprocess)
             status_text = (
                 f"✅ Видео обработано и отправлено на аппрув!\n"
                 f"🆔 ID аппрува: {approval_id}\n"
@@ -4136,7 +4473,11 @@ ID сценария: {video_data['metadata']['scenario_id']}
             if summary_message:
                 status_text += f"\n\n{summary_message}"
 
-            await query.message.reply_text(status_text)
+            reedit_keyboard = [
+                [InlineKeyboardButton("♻️ Перередактировать", callback_data="reedit_open")],
+                [InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]
+            ]
+            await query.message.reply_text(status_text, reply_markup=InlineKeyboardMarkup(reedit_keyboard))
             
         except Exception as e:
             logger.error(f"Ошибка обработки видео: {e}")
@@ -4983,6 +5324,13 @@ def main():
     application.add_handler(CallbackQueryHandler(bot.handle_group_selection, pattern="^group_"))
     application.add_handler(CallbackQueryHandler(bot.handle_filter_selection, pattern="^filter_"))
     application.add_handler(CallbackQueryHandler(bot.handle_quick_approval, pattern="^quick_(approve|reject)_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_open, pattern="^reedit_open$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_settings, pattern="^reedit_settings$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_show_filters, pattern="^reedit_filter_menu$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_select_filter, pattern="^reeditfilter_"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_back, pattern="^reedit_back$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_apply, pattern="^reedit_apply$"))
+    application.add_handler(CallbackQueryHandler(bot.handle_reedit_cancel, pattern="^reedit_cancel$"))
     application.add_handler(CallbackQueryHandler(bot.handle_parameter_adjustment, pattern="^adjust_"))
     application.add_handler(CallbackQueryHandler(bot.handle_set_value, pattern="^setvalue_"))
     application.add_handler(CallbackQueryHandler(bot.handle_save_to_yandex, pattern="^save_yandex_"))

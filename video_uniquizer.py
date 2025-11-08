@@ -66,7 +66,15 @@ class VideoUniquizer:
             'vibrant': {'saturation': 1.2, 'vibrance': 1.15, 'clarity': 1.1}
         }
         
-    def apply_temporal_effects(self, video_path: str, output_path: str, speed_factor: float = None, trim_amount: float = None) -> str:
+    def apply_temporal_effects(
+        self,
+        video_path: str,
+        output_path: str,
+        speed_factor: float = None,
+        trim_amount: float = None,
+        trim_start: Optional[float] = None,
+        trim_end: Optional[float] = None,
+    ) -> str:
         """
         Применяет временные эффекты (скорость, обрезка)
         
@@ -84,23 +92,40 @@ class VideoUniquizer:
         
         print(f"⚡ Применяю изменение скорости: {speed_factor:.3f}x")
         
+        duration = clip.duration
+        trim_start_val = 0.0
+        trim_end_val = 0.0
+
         # Обрезка в СЕКУНДАХ (используем переданный параметр или случайный)
-        if trim_amount is None:
-            trim_amount = random.uniform(*self.trim_seconds)
-        
-        # Обрезаем только если видео достаточно длинное
-        if trim_amount > 0:
-            max_trim = max(0, clip.duration / 2 - 0.1)
-            trim_use = min(trim_amount, max_trim) if max_trim > 0 else 0
+        if trim_start is not None or trim_end is not None:
+            trim_start_val = max(0.0, trim_start or 0.0)
+            trim_end_val = max(0.0, trim_end or 0.0)
         else:
-            trim_use = 0
-        trim_start = trim_use
-        trim_end = trim_use
+            if trim_amount is None:
+                trim_amount = random.uniform(*self.trim_seconds)
+            # Гарантируем, что не обрезаем больше 10% длины с каждой стороны
+            max_trim = duration * 0.1 if duration else trim_amount
+            trim_start_val = min(trim_amount, max_trim)
+            trim_end_val = min(trim_amount, max_trim)
         
-        print(f"✂️ Обрезаю {trim_start:.2f}s с начала и {trim_end:.2f}s с конца")
+        # Гарантируем, что итоговая длительность положительная
+        if duration:
+            max_allowed = max(0.0, duration - 0.1)
+            if trim_start_val + trim_end_val > max_allowed:
+                excess = (trim_start_val + trim_end_val) - max_allowed
+                # Равномерно уменьшаем обрезку с каждой стороны
+                trim_start_val = max(0.0, trim_start_val - excess / 2)
+                trim_end_val = max(0.0, trim_end_val - excess / 2)
+                if trim_start_val + trim_end_val > max_allowed:
+                    trim_end_val = max(0.0, max_allowed - trim_start_val)
+        
+        print(f"✂️ Обрезаю {trim_start_val:.2f}s с начала и {trim_end_val:.2f}s с конца")
         
         # Применяем изменения
-        processed_clip = clip.subclip(trim_start, clip.duration - trim_end)
+        end_time = None
+        if duration:
+            end_time = max(trim_start_val, duration - trim_end_val)
+        processed_clip = clip.subclip(trim_start_val, end_time)
         processed_clip = processed_clip.fx(lambda clip: clip.speedx(speed_factor))
         
         # Сохраняем
@@ -617,6 +642,8 @@ class VideoUniquizer:
         
         if params is None:
             params = {}
+        params = dict(params)
+        postprocess_meta = dict(postprocess) if postprocess else {}
         
         self._update_progress(f"🎬 Starting video uniquization: {input_path}")
         self._update_progress(f"🎨 Effects to apply: {effects}")
@@ -648,15 +675,26 @@ class VideoUniquizer:
                 if effect == 'temporal':
                     self._update_progress("⏱️ Applying temporal effects...")
                     # Извлекаем параметры скорости
-                    if postprocess and postprocess.get('speed_factor') is not None:
-                        speed_factor = postprocess.get('speed_factor')
-                    else:
-                        speed_factor = params.get('speed')
-                    if postprocess and postprocess.get('trim_seconds') is not None:
-                        trim_amount = postprocess.get('trim_seconds')
-                    else:
-                        trim_amount = params.get('trim')
-                    self.apply_temporal_effects(current_path, temp_path, speed_factor, trim_amount)
+                    speed_factor = params.get('speed')
+                    if postprocess_meta.get('speed_factor') is not None:
+                        speed_factor = postprocess_meta.get('speed_factor')
+                    trim_amount = params.get('trim')
+                    trim_start_override = postprocess_meta.get('trim_start')
+                    trim_end_override = postprocess_meta.get('trim_end')
+                    trim_seconds_override = postprocess_meta.get('trim_seconds')
+                    if trim_seconds_override is not None:
+                        if trim_start_override is None:
+                            trim_start_override = trim_seconds_override
+                        if trim_end_override is None:
+                            trim_end_override = trim_seconds_override
+                    self.apply_temporal_effects(
+                        current_path,
+                        temp_path,
+                        speed_factor,
+                        trim_amount,
+                        trim_start=trim_start_override,
+                        trim_end=trim_end_override,
+                    )
                 elif effect == 'visual':
                     self._update_progress("👁️ Applying visual effects...")
                     self.apply_visual_effects(current_path, temp_path)
@@ -699,11 +737,15 @@ class VideoUniquizer:
                     temp_path = f"temp_{random.randint(1000, 9999)}.mp4"
             
             # Дополнительная пост-обработка через ffmpeg при необходимости
-            if postprocess:
-                try:
-                    current_path = self._apply_ffmpeg_postprocess(current_path, postprocess)
-                except Exception as post_err:
-                    self._update_progress(f"⚠️ Post-process failed: {post_err}")
+            if postprocess_meta:
+                postprocess_for_ffmpeg = dict(postprocess_meta)
+                for key in ('trim_seconds', 'trim_start', 'trim_end'):
+                    postprocess_for_ffmpeg.pop(key, None)
+                if postprocess_for_ffmpeg:
+                    try:
+                        current_path = self._apply_ffmpeg_postprocess(current_path, postprocess_for_ffmpeg)
+                    except Exception as post_err:
+                        self._update_progress(f"⚠️ Post-process failed: {post_err}")
 
             # Переименовываем финальный файл
             os.rename(current_path, output_path)
