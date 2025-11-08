@@ -2592,12 +2592,16 @@ ID сценария: {video_data['metadata']['scenario_id']}
                     logger.error(traceback.format_exc())
             
             # Запускаем обработку в отдельном потоке
+            params, final_postprocess, postprocess_overrides = self.compose_processing_parameters(user_id, filter_id)
+
             result_path = await loop.run_in_executor(
                 None,
                 self.process_video_sync,
                 str(input_path),
                 str(output_path),
                 filter_info,
+                params,
+                final_postprocess,
                 progress_callback  # Передаем callback
             )
             
@@ -2621,8 +2625,25 @@ ID сценария: {video_data['metadata']['scenario_id']}
 
                 await query.edit_message_text(status_text)
                 
-                # Отправляем видео
-                processing_summary = self.build_processing_summary_text(filter_info.get('postprocess'))
+                session_id = str(uuid.uuid4())[:8]
+                original_copy_path = self.temp_dir / f"original_quick_{session_id}.mp4"
+                try:
+                    shutil.copy2(input_path, original_copy_path)
+                    original_source = str(original_copy_path)
+                except Exception as copy_err:
+                    logger.warning(f"⚠️ Не удалось создать копию оригинального видео (quick mode): {copy_err}")
+                    original_source = str(input_path)
+
+                user_states[user_id]['original_video'] = original_source
+                user_states[user_id]['session_id'] = session_id
+                user_states[user_id]['filter_id'] = filter_id
+                user_states[user_id]['filter'] = filter_info['name']
+
+                user_states[user_id]['applied_params'] = dict(params)
+                user_states[user_id]['applied_postprocess'] = dict(final_postprocess)
+                user_states[user_id]['postprocess_overrides'] = dict(postprocess_overrides)
+
+                processing_summary = self.build_processing_summary_text(final_postprocess)
                 caption_text = (
                     f"✅ **Готово!**\n\n"
                     f"🎨 Фильтр: {filter_info['name']}\n"
@@ -2643,14 +2664,19 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 user_states[user_id]['quick_result'] = {
                     'result_path': str(result_path),
                     'input_path': str(input_path),
+                    'original_copy': original_source,
                     'filter_name': filter_info['name'],
                     'filter_id': filter_id,
                     'file_size_mb': file_size_mb,
-                    'difference_pct': difference_pct
+                    'difference_pct': difference_pct,
+                    'session_id': session_id,
+                    'postprocess': dict(final_postprocess)
                 }
+                user_states[user_id]['status'] = 'completed'
                 
                 # Показываем кнопки с опциями
                 keyboard = [
+                    [InlineKeyboardButton("♻️ Перередактировать", callback_data="reedit_open")],
                     [InlineKeyboardButton("💾 Записать на Yandex Disk", callback_data=f"save_yandex_{filter_id}")],
                     [InlineKeyboardButton("✅ Готово (удалить временные файлы)", callback_data="quick_done")]
                 ]
@@ -2658,6 +2684,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 
                 await query.message.reply_text(
                     "📋 **Что делать дальше?**\n\n"
+                    "• Использовать кнопку *Перередактировать*, чтобы изменить параметры\n"
                     "• Записать на Yandex Disk с метаданными\n"
                     "• Или завершить (временные файлы будут удалены)",
                     reply_markup=reply_markup,
@@ -2716,7 +2743,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             quick_result = user_states[user_id]['quick_result']
             
             # Удаляем временные файлы
-            for path_key in ['result_path', 'input_path']:
+            for path_key in ['result_path', 'input_path', 'original_copy']:
                 if path_key in quick_result:
                     path = quick_result[path_key]
                     if os.path.exists(path):
@@ -2728,6 +2755,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Очищаем состояние
             del user_states[user_id]['quick_result']
+            user_states[user_id].pop('original_video', None)
+            user_states[user_id].pop('session_id', None)
+            user_states[user_id].pop('applied_params', None)
+            user_states[user_id].pop('applied_postprocess', None)
+            user_states[user_id].pop('postprocess_overrides', None)
+            user_states[user_id].pop('filter_id', None)
+            user_states[user_id].pop('filter', None)
         
         await query.edit_message_text(
             "✅ **Готово!**\n\n"
@@ -2854,7 +2888,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 )
             
             # Удаляем временные файлы
-            for path_key in ['result_path', 'input_path']:
+            for path_key in ['result_path', 'input_path', 'original_copy']:
                 if path_key in quick_result:
                     path = quick_result[path_key]
                     if os.path.exists(path):
@@ -2866,6 +2900,13 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Очищаем состояние
             del user_states[user_id]['quick_result']
+            user_states[user_id].pop('original_video', None)
+            user_states[user_id].pop('session_id', None)
+            user_states[user_id].pop('applied_params', None)
+            user_states[user_id].pop('applied_postprocess', None)
+            user_states[user_id].pop('postprocess_overrides', None)
+            user_states[user_id].pop('filter_id', None)
+            user_states[user_id].pop('filter', None)
             
         except Exception as e:
             logger.error(f"Ошибка сохранения на Yandex Disk: {e}")
@@ -2875,18 +2916,28 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 parse_mode='Markdown'
             )
     
-    def process_video_sync(self, input_path: str, output_path: str, filter_info: dict, progress_callback=None) -> str:
+    def process_video_sync(
+        self,
+        input_path: str,
+        output_path: str,
+        filter_info: dict,
+        params: Optional[dict] = None,
+        postprocess: Optional[dict] = None,
+        progress_callback=None
+    ) -> str:
         """Синхронная обработка видео с поддержкой progress callback"""
         try:
             from video_uniquizer import VideoUniquizer
             
             uniquizer = VideoUniquizer(progress_callback=progress_callback)
+            params_to_use = params if params is not None else filter_info.get('params', {})
+            postprocess_to_use = postprocess if postprocess is not None else filter_info.get('postprocess')
             result = uniquizer.uniquize_video(
                 input_path=input_path,
                 output_path=output_path,
                 effects=filter_info['effects'],
-                params=filter_info.get('params', {}),
-                postprocess=filter_info.get('postprocess')
+                params=params_to_use,
+                postprocess=postprocess_to_use
             )
             
             return result
