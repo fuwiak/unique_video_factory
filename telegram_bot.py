@@ -832,15 +832,13 @@ class TelegramVideoBot:
         if processing_summary:
             caption_text += f"\n\n{processing_summary}"
 
-        await self.upload_video_with_progress(
+        upload_info = await self.upload_video_with_progress(
             file_path=result_path,
             user_id=user_id,
             context=context,
             filename=result_filename,
             caption=caption_text
         )
-
-        Path(result_path).unlink(missing_ok=True)
 
         user_states[user_id]['status'] = 'completed'
 
@@ -857,17 +855,40 @@ class TelegramVideoBot:
             'approval_id': approval_id
         }
 
+        difference_pct = None
+        try:
+            difference_pct = self.calculate_video_difference(str(original_path), str(result_path))
+        except Exception as diff_err:
+            logger.debug(f"Difference calculation failed (reedit): {diff_err}")
+
+        user_states[user_id]['quick_result'] = {
+            'result_path': str(result_path),
+            'input_path': str(original_path),
+            'original_copy': str(original_path),
+            'filter_name': filter_info['name'],
+            'filter_id': filter_id,
+            'file_size_mb': os.path.getsize(result_path) / (1024 * 1024),
+            'difference_pct': difference_pct,
+            'session_id': session_id,
+            'postprocess': dict(final_postprocess),
+            'yandex_url': yandex_url,
+            'yandex_remote_path': yandex_remote_path,
+            'upload_info': upload_info,
+        }
+
         status_text = (
-            f"✅ Переобработанное видео отправлено на аппрув!\n"
-            f"🆔 ID аппрува: {approval_id}\n"
-            f"⏳ Ожидайте одобрения менеджера."
+            "📋 **Что делать дальше?**\n\n"
+            "• Используйте кнопку *Перередактировать*, чтобы внести новые правки\n"
+            "• Запишите файл на Yandex Disk (если нужно повторно)\n"
+            "• Или завершите работу — временные файлы будут удалены"
         )
         if processing_summary:
             status_text += f"\n\n{processing_summary}"
 
         reedit_keyboard = [
             [InlineKeyboardButton("♻️ Перередактировать снова", callback_data="reedit_open")],
-            [InlineKeyboardButton("🔄 Начать заново?", callback_data="restart")]
+            [InlineKeyboardButton("💾 Записать на Yandex Disk", callback_data=f"save_yandex_{filter_id}")],
+            [InlineKeyboardButton("✅ Готово (удалить временные файлы)", callback_data="quick_done")]
         ]
         await query.message.reply_text(status_text, reply_markup=InlineKeyboardMarkup(reedit_keyboard))
 
