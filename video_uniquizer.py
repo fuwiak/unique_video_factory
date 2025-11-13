@@ -918,7 +918,52 @@ class VideoUniquizer:
 
         temp_output = str(Path(input_path).with_name(f"{Path(input_path).stem}_post.mp4"))
 
+        # Определяем параметры обрезки
+        trim_start = float(meta.get('trim_start', trim_seconds))
+        trim_end = float(meta.get('trim_end', 0))
+        
+        # Получаем длительность для правильной обрезки
+        duration = None
+        if trim_start > 0 or trim_end > 0:
+            probe_cmd = ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', input_path]
+            try:
+                duration = float(subprocess.run(probe_cmd, capture_output=True, text=True).stdout.strip())
+            except:
+                duration = None
+        
+        # Собираем фильтры в правильном порядке: обрезка -> скорость -> остальные эффекты
         video_filters = []
+        audio_filters = []
+        
+        # 1. Обрезка (первая операция для синхронизации)
+        if trim_start > 0 or trim_end > 0:
+            if trim_start > 0:
+                trim_video = f"trim=start={trim_start:.3f}"
+                if duration and trim_end > 0:
+                    end_time = duration - trim_end
+                    trim_video += f":end={end_time:.3f}"
+                trim_video += ",setpts=PTS-STARTPTS"
+                video_filters.append(trim_video)
+                
+                trim_audio = f"atrim=start={trim_start:.3f}"
+                if duration and trim_end > 0:
+                    end_time = duration - trim_end
+                    trim_audio += f":end={end_time:.3f}"
+                trim_audio += ",asetpts=PTS-STARTPTS"
+                audio_filters.append(trim_audio)
+            elif trim_end > 0 and duration:
+                end_time = duration - trim_end
+                video_filters.append(f"trim=end={end_time:.3f},setpts=PTS-STARTPTS")
+                audio_filters.append(f"atrim=end={end_time:.3f},asetpts=PTS-STARTPTS")
+        
+        # 2. Изменение скорости (после обрезки)
+        if abs(speed_factor - 1.0) > 1e-3:
+            video_filters.append(f"setpts=PTS/{speed_factor:.5f}")
+            if speed_factor < 0.5 or speed_factor > 2.0:
+                raise ValueError("Speed factor for audio must be between 0.5 and 2.0")
+            audio_filters.append(f"atempo={speed_factor:.5f}")
+        
+        # 3. Остальные эффекты (кадрирование, цветокоррекция)
         if crop_factor < 1.0:
             crop_expr = f"crop=iw*{crop_factor:.5f}:ih*{crop_factor:.5f}"
             scale_factor = 1.0 / crop_factor
@@ -928,37 +973,24 @@ class VideoUniquizer:
             )
             video_filters.extend([crop_expr, scale_expr])
         video_filters.append(f"eq=contrast={contrast:.2f}:saturation={saturation:.2f}")
-        if abs(speed_factor - 1.0) > 1e-3:
-            video_filters.append(f"setpts=PTS/{speed_factor:.5f}")
-
-        audio_filters = []
+        
+        # Громкость для аудио
         if abs(volume - 1.0) > 1e-3:
             audio_filters.append(f"volume={volume:.5f}")
-        if abs(speed_factor - 1.0) > 1e-3:
-            if speed_factor < 0.5 or speed_factor > 2.0:
-                raise ValueError("Speed factor for audio must be between 0.5 and 2.0")
-            audio_filters.append(f"atempo={speed_factor:.5f}")
-
+        
+        # Собираем filter_complex
         filter_complex_parts = []
         filter_complex_parts.append(f"[0:v]{','.join(video_filters)}[v]")
         if audio_filters:
             filter_complex_parts.append(f"[0:a]{','.join(audio_filters)}[a]")
-
         filter_complex = ";".join(filter_complex_parts)
 
-        cmd = ['ffmpeg', '-y']
-        if trim_seconds > 0:
-            cmd.extend(['-ss', f"{trim_seconds:.3f}"])
-        cmd.extend(['-i', input_path, '-filter_complex', filter_complex, '-map', '[v]'])
+        cmd = ['ffmpeg', '-y', '-i', input_path, '-filter_complex', filter_complex, '-map', '[v]'] 
 
         if audio_filters:
             cmd.extend(['-map', '[a]'])
         else:
             cmd.extend(['-map', '0:a:0?', '-c:a', 'copy'])
-
-        if not audio_filters:
-            # Audio copy already configured, ensure command aligns with structure
-            pass
 
         cmd.extend([
             '-c:v', 'libx264',
@@ -966,7 +998,9 @@ class VideoUniquizer:
             '-b:v', video_bitrate,
             '-maxrate', maxrate,
             '-bufsize', bufsize,
-            '-movflags', '+faststart'
+            '-movflags', '+faststart',
+            '-async', '1',  # Синхронизация аудио (1 секунда коррекции)
+            '-shortest'  # Обрезать по минимальной длительности аудио/видео
         ])
 
         if audio_filters:
