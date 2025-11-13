@@ -1574,11 +1574,11 @@ class TelegramVideoBot:
         
         # Если еще не ввели ID ролика
         if user_states[user_id]['video_id'] is None:
-            pattern = re.compile(r"^(\d{2}\.\d{2}\.\d{4})\s*\(\s*(id_[\w-]+)\s*\)$", re.IGNORECASE)
+            pattern = re.compile(r"^(\d{2}\.\d{2}\.\d{2})\s*\(\s*(id_[\w-]+)\s*\)$", re.IGNORECASE)
             match = pattern.match(text)
             if not match:
                 await update.message.reply_text(
-                    "❌ Неверный формат. Используйте 05.11.2025 (id_12345)"
+                    "❌ Неверный формат. Используйте 25.10.15 (id_1244)"
                 )
                 return
 
@@ -1586,10 +1586,10 @@ class TelegramVideoBot:
 
             try:
                 # Проверяем корректность даты
-                datetime.strptime(date_str, "%d.%m.%Y")
+                datetime.strptime(date_str, "%d.%m.%y")
             except ValueError:
                 await update.message.reply_text(
-                    "❌ Неверная дата. Используйте формат дд.мм.гггг, например 05.11.2025 (id_12345)"
+                    "❌ Неверная дата. Используйте формат дд.мм.гг, например 25.10.15 (id_1244)"
                 )
                 return
 
@@ -2218,7 +2218,7 @@ class TelegramVideoBot:
                 return False, error_msg
             
             video_id = video_data.get('video_id', 'id_unknown')
-            video_date = video_data.get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            video_date = video_data.get('video_date') or datetime.now().strftime('%d.%m.%y')
             filename_base = f"{video_date} ({video_id})"
             approved_path = f"{approved_folder}/{filename_base}.mp4"
 
@@ -2526,7 +2526,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 "📦 **РАСШИРЕННЫЙ РЕЖИМ**\n\n"
                 "Создайте несколько вариантов видео с метаданными.\n\n"
                 "🆔 **Введите дату и ID ролика:**\n"
-                "Формат: `05.11.2025 (id_12345)`",
+                "Формат: `25.10.15 (id_1244)`",
                 parse_mode='Markdown'
             )
     
@@ -2806,7 +2806,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             "💾 Сохранение на Yandex Disk\n\n"
             "Для сохранения нужны метаданные.\n\n"
             "🆔 Введите дату и ID ролика:\n"
-            "Формат: 05.11.2025 (id_12345)"
+            "Формат: 25.10.15 (id_1244)"
         )
     
     async def handle_quick_done(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2888,7 +2888,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Получаем метаданные
             video_id = user_states[user_id]['video_id'] or 'id_unknown'
-            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%y')
             blogger_name = user_states[user_id]['blogger_name']
             folder_name = user_states[user_id]['folder_name']
             filter_name = quick_result['filter_name']
@@ -3559,7 +3559,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             # Создаем задачи для параллельной обработки
             tasks = []
             video_id = user_states[user_id].get('video_id', 'unknown')
-            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%y')
             
             for i, filter_id in enumerate(selected_filters):
                 filename_base = f"{video_date} ({video_id})"
@@ -4039,7 +4039,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
                 'filter_name': task['filter_info']['name'],
                 'filter_id': task['filter_id'],
                 'video_id': task.get('video_id', 'id_unknown'),
-                'video_date': task.get('video_date', datetime.now().strftime('%d.%m.%Y')),
+                'video_date': task.get('video_date', datetime.now().strftime('%d.%m.%y')),
                 'compressed': file_size_mb > 20,  # Если файл был больше 20MB
                 'split': file_size_mb > 50,  # Если файл был больше 50MB
                 'chunks_count': len(chunks) if file_size_mb > 50 else 1,
@@ -4508,7 +4508,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             
             # Создаем имя файла с датой и ID ролика
             video_id = user_states[user_id].get('video_id', 'id_unknown')
-            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%y')
             unique_id = str(uuid.uuid4())[:8]
             
             input_filename = f"input_{unique_id}.mp4"
@@ -5084,7 +5084,7 @@ ID сценария: {video_data['metadata']['scenario_id']}
             blogger_name = user_states[user_id].get('blogger_name', f'user_{user_id}')
             folder_name = user_states[user_id].get('folder_name')
             video_id = user_states[user_id].get('video_id') or 'id_unknown'
-            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%Y')
+            video_date = user_states[user_id].get('video_date') or datetime.now().strftime('%d.%m.%y')
             
             logger.info(f"👤 Блогер: {blogger_name}, 📁 Папка: {folder_name}, 🆔 ID: {video_id}, 📅 Дата: {video_date}")
             
